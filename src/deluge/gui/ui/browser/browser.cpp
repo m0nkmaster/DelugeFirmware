@@ -1307,6 +1307,11 @@ void Browser::currentFileDeleted() {
 void Browser::renderOLED(deluge::hid::display::oled_canvas::Canvas& canvas) {
 	canvas.drawScreenTitle(title);
 
+	// Display entered text in top left if any exists
+	if (!enteredText.isEmpty()) {
+		canvas.drawString(enteredText.get(), 1, OLED_MAIN_TOPMOST_PIXEL + 1, kTextSpacingX, kTextSpacingY);
+	}
+
 	int32_t textStartX = 14;
 	int32_t iconStartX = 1;
 	if (FlashStorage::accessibilityMenuHighlighting) {
