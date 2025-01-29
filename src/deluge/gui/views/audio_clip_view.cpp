@@ -162,14 +162,6 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth
 		return true;
 	}
 
-	// Adjust playback position if start marker is active
-	if (startMarkerVisible && playbackHandler.isEitherClockActive()) {
-		int32_t startPos = divide_round_negative(0 - currentSong->xScroll[NAVIGATION_CLIP], 
-		                                        currentSong->xZoom[NAVIGATION_CLIP]);
-		if (startPos >= 0 && startPos < kDisplayWidth) {
-			clip.playbackStartedAtTick = startPos * currentSong->xZoom[NAVIGATION_CLIP];
-		}
-	}
 
 	// If asked, draw grey regions + flashing columns
 	if (drawUndefinedArea) {
@@ -658,7 +650,7 @@ void AudioClipView::changeUnderlyingSampleLength(AudioClip& clip, const Sample* 
 
 // ----------- "Start" pointer logic -----------
 void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* sample, int32_t newStartTicks,
-                                                int32_t oldLength, uint64_t oldLengthSamples) const {
+                                                int32_t oldLength, uint64_t oldLengthSamples) {
 	int32_t oldEndTick = oldLength;
 	int32_t newLengthTicks = oldEndTick - newStartTicks;
 	if (newLengthTicks < 1) {
