@@ -75,7 +75,7 @@ private:
 	void changeUnderlyingSampleLength(AudioClip& clip, const Sample* sample, int32_t newLength, int32_t oldLength,
 	                                  uint64_t oldLengthSamples) const;
 	void changeUnderlyingSampleStart(AudioClip& clip, const Sample* sample, int32_t newStartTicks, int32_t oldLength,
-	                                 uint64_t oldLengthSamples) const;
+	                                 uint64_t oldLengthSamples);
 };
 
 extern AudioClipView audioClipView;
