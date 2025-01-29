@@ -192,6 +192,12 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth
 			// -------- START marker ----------
 			if (startSquareDisplay >= 0) {
 				if (startSquareDisplay < kDisplayWidth) {
+					// Gray out everything before start marker when visible
+					if (startMarkerVisible) {
+						RGB greyCol = colours::grey;
+						std::fill(&image[y][0], &image[y][startSquareDisplay], greyCol);
+					}
+					
 					// Overlay green start marker if visible (dimmed when blinking off)
 					if (startMarkerVisible) {
 						if (blinkOn) {
