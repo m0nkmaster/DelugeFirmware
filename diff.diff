@@ -875,3 +875,59 @@ index 3029a965..f4b2aa1b 100644
  	if ((pos / 512) % 16 == 0) {
  		PadLEDs::sendOutMainPadColours();
  		PadLEDs::sendOutSidebarColours();
+diff --git a/src/deluge/gui/views/audio_clip_view.cpp b/src/deluge/gui/views/audio_clip_view.cpp
+index 1234567..89abcde 100644
+--- a/src/deluge/gui/views/audio_clip_view.cpp
++++ b/src/deluge/gui/views/audio_clip_view.cpp
+@@ -167,14 +167,6 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth +
+ 	int32_t startSquareDisplay =
+ 	    divide_round_negative(0 - currentSong->xScroll[NAVIGATION_CLIP], currentSong->xZoom[NAVIGATION_CLIP]);
+ 
+-	// Adjust playback position if start marker is active
+-	if (startMarkerVisible && playbackHandler.isEitherClockActive()) {
+-		int32_t startPos = divide_round_negative(0 - currentSong->xScroll[NAVIGATION_CLIP], 
+-		                                        currentSong->xZoom[NAVIGATION_CLIP]);
+-		if (startPos >= 0 && startPos < kDisplayWidth) {
+-			clip.playbackStartedAtTick = startPos * currentSong->xZoom[NAVIGATION_CLIP];
+-		}
+-	}
+ 
+ 	// If asked, draw grey regions + flashing columns
+ 	if (drawUndefinedArea) {
+@@ -660,7 +652,7 @@ void AudioClipView::changeUnderlyingSampleLength(AudioClip& clip, const Sample* sam
+ 
+ // ----------- "Start" pointer logic -----------
+ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* sample, int32_t newStartTicks,
+-                                                int32_t oldLength, uint64_t oldLengthSamples) const {
++                                                int32_t oldLength, uint64_t oldLengthSamples) {
+ 	int32_t oldEndTick = oldLength;
+ 	int32_t newLengthTicks = oldEndTick - newStartTicks;
+ 	if (newLengthTicks < 1) {
+@@ -714,10 +706,10 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* sam
+ 		}
+ 	}
+ 
+-	// After changing the sample start, reset scroll position and move start marker to column 1
+-	currentSong->xScroll[NAVIGATION_CLIP] = 0;
+-	startMarkerVisible = false;
+-	uiTimerManager.unsetTimer(TimerName::UI_SPECIFIC);
++	// Keep the current view position and start marker visible while updating the UI
++	startMarkerVisible = true;
++	blinkOn = true;
++	uiTimerManager.setTimer(TimerName::UI_SPECIFIC, kSampleMarkerBlinkTime);
+ 	uiNeedsRendering(this, 0xFFFFFFFF, 0);
+ }
+ 
+diff --git a/src/deluge/gui/views/audio_clip_view.h b/src/deluge/gui/views/audio_clip_view.h
+index abcdef0..1234567 100644
+--- a/src/deluge/gui/views/audio_clip_view.h
++++ b/src/deluge/gui/views/audio_clip_view.h
+@@ -74,7 +74,7 @@ private:
+ 	void changeUnderlyingSampleLength(AudioClip& clip, const Sample* sample, int32_t newLength, int32_t oldLength,
+ 	                                  uint64_t oldLengthSamples) const;
+ 	void changeUnderlyingSampleStart(AudioClip& clip, const Sample* sample, int32_t newStartTicks, int32_t oldLength,
+-	                                 uint64_t oldLengthSamples) const;
++	                                 uint64_t oldLengthSamples);
+ };
+ 
+ extern AudioClipView audioClipView;
