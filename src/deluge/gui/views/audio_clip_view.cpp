@@ -714,6 +714,8 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* s
 	}
 
 	// Keep the current view position and start marker visible while updating the UI
+	startMarkerVisible = true;
+	blinkOn = true;
 	uiTimerManager.setTimer(TimerName::UI_SPECIFIC, kSampleMarkerBlinkTime);
 	uiNeedsRendering(this, 0xFFFFFFFF, 0);
 }
