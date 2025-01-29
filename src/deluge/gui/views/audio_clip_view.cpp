@@ -713,9 +713,7 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* s
 		}
 	}
 
-	// After changing the sample start, reset scroll position and move start marker to column 1
-	currentSong->xScroll[NAVIGATION_CLIP] = 0;
-	startMarkerVisible = false;
+	// Keep the current view position but update the UI
 	uiTimerManager.unsetTimer(TimerName::UI_SPECIFIC);
 	uiNeedsRendering(this, 0xFFFFFFFF, 0);
 }
