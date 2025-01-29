@@ -60,9 +60,14 @@ AudioClipView audioClipView{};
 
 inline Sample* getSample() {
 	AudioClip& clip = *getCurrentAudioClip();
+
+	// During active linear recording, return the transient recording buffer
 	if (clip.getCurrentlyRecordingLinearly()) {
-		return clip.recorder->sample;
+		return clip.recorder->sample; // Temporary storage for in-progress recording
 	}
+
+	// Otherwise return the committed sample from persistent storage
+	// Note: This cast is safe because AudioClips must use SampleHolder
 	return static_cast<Sample*>(clip.sampleHolder.audioFile);
 }
 
@@ -185,33 +190,21 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth
 			}
 
 			// -------- START marker ----------
-
 			if (startSquareDisplay >= 0) {
 				if (startSquareDisplay < kDisplayWidth) {
-					// Fill grey area first
-					// int32_t fillEnd = startSquareDisplay;
-					// if (fillEnd > kDisplayWidth) {
-					//     fillEnd = kDisplayWidth;
-					// }
-					// for (int32_t xPos = 0; xPos < fillEnd; ++xPos) {
-					//     image[y][xPos][0] = colours::grey;
-					// }
-
-					// Then overlay the green start marker if visible
+					// Overlay green start marker if visible (dimmed when blinking off)
 					if (startMarkerVisible) {
 						if (blinkOn) {
-							// bright green
 							image[y][startSquareDisplay] = colours::green;
 						}
 						else {
-							// dim green - using a darker version of green
 							image[y][startSquareDisplay] = colours::green.dim();
 						}
 					}
-					// else {
-					//     // If not visible, ensure this column is grey
-					//     image[y][startSquareDisplay] = colours::grey;
-					// }
+					else {
+						// If not visible, ensure this column is grey
+						image[y][startSquareDisplay] = colours::grey;
+					}
 				}
 				else {
 					RGB greyCol = colours::grey;
@@ -422,7 +415,7 @@ dontDeactivateMarker:
 		}
 	}
 
-	// Back button to clear Clip
+	// Back button clears clip content
 	else if (b == BACK && currentUIMode == UI_MODE_HOLDING_HORIZONTAL_ENCODER_BUTTON) {
 		if (on) {
 			if (inCardRoutine) {
@@ -563,9 +556,8 @@ ActionResult AudioClipView::padAction(int32_t x, int32_t y, int32_t on) {
 						uiTimerManager.setTimer(TimerName::UI_SPECIFIC, kSampleMarkerBlinkTime);
 						uiNeedsRendering(this, 0xFFFFFFFF, 0);
 					}
+					// Start marker handling (experimental runtime feature)
 					else if (x == startSquareDisplay) {
-
-						// WIP: Allow the user to trim from the start of the audio clip
 						if (runtimeFeatureSettings.get(RuntimeFeatureSettingType::TrimFromStartOfAudioClip)) {
 							startMarkerVisible = true;
 							endMarkerVisible = false;
