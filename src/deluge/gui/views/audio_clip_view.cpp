@@ -162,6 +162,15 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth
 		return true;
 	}
 
+	// Adjust playback position if start marker is active
+	if (startMarkerVisible && playbackHandler.isEitherClockActive()) {
+		int32_t startPos = divide_round_negative(0 - currentSong->xScroll[NAVIGATION_CLIP], 
+		                                        currentSong->xZoom[NAVIGATION_CLIP]);
+		if (startPos >= 0 && startPos < kDisplayWidth) {
+			clip.playbackStartedAtTick = startPos * currentSong->xZoom[NAVIGATION_CLIP];
+		}
+	}
+
 	// If asked, draw grey regions + flashing columns
 	if (drawUndefinedArea) {
 		for (int32_t y = 0; y < kDisplayHeight; y++) {
@@ -655,6 +664,9 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* s
 	if (newLengthTicks < 1) {
 		newLengthTicks = 1;
 	}
+
+	// Store the original scroll position
+	int32_t originalScroll = currentSong->xScroll[NAVIGATION_CLIP];
 	uint64_t newLengthSamples =
 	    static_cast<uint64_t>(oldLengthSamples * newLengthTicks + (oldLength / 2)) / static_cast<uint32_t>(oldLength);
 
@@ -700,6 +712,12 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* s
 			actionLogger.closeAction(actionType);
 		}
 	}
+
+	// After changing the sample start, reset scroll position and move start marker to column 1
+	currentSong->xScroll[NAVIGATION_CLIP] = 0;
+	startMarkerVisible = false;
+	uiTimerManager.unsetTimer(TimerName::UI_SPECIFIC);
+	uiNeedsRendering(this, 0xFFFFFFFF, 0);
 }
 
 void AudioClipView::playbackEnded() {
