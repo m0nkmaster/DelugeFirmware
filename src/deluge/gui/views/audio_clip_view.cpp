@@ -185,35 +185,26 @@ bool AudioClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth
 			}
 
 			// -------- START marker ----------
-
 			if (startSquareDisplay >= 0) {
 				if (startSquareDisplay < kDisplayWidth) {
-					// Fill grey area first
-					// int32_t fillEnd = startSquareDisplay;
-					// if (fillEnd > kDisplayWidth) {
-					//     fillEnd = kDisplayWidth;
-					// }
-					// for (int32_t xPos = 0; xPos < fillEnd; ++xPos) {
-					//     image[y][xPos][0] = colours::grey;
-					// }
+					// Fill grey area first from left edge to start marker
+					if (startSquareDisplay > 0) {
+						RGB greyCol = colours::grey;
+						std::fill(&image[y][0], &image[y][startSquareDisplay], greyCol);
+					}
 
 					// Then overlay the green start marker if visible
 					if (startMarkerVisible) {
 						if (blinkOn) {
-							// bright green
 							image[y][startSquareDisplay] = colours::green;
 						}
 						else {
-							// dim green - using a darker version of green
 							image[y][startSquareDisplay] = colours::green.dim();
 						}
 					}
-					// else {
-					//     // If not visible, ensure this column is grey
-					//     image[y][startSquareDisplay] = colours::grey;
-					// }
 				}
 				else {
+					// If start marker is off-screen to the right, fill entire row grey
 					RGB greyCol = colours::grey;
 					std::fill(&image[y][0], &image[y][kDisplayWidth], greyCol);
 				}
@@ -545,8 +536,9 @@ ActionResult AudioClipView::padAction(int32_t x, int32_t y, int32_t on) {
 					else {
 						Sample* sample = getSample();
 						if (sample) {
-							int32_t newStartTicks =
-							    x * currentSong->xZoom[NAVIGATION_CLIP] + currentSong->xScroll[NAVIGATION_CLIP];
+							int32_t newStartTicks = getCurrentAudioClip()->sampleHolder.startPos
+							                      + x * currentSong->xZoom[NAVIGATION_CLIP]
+							                      + currentSong->xScroll[NAVIGATION_CLIP];
 							int32_t oldLength = clipRef.loopLength;
 							uint64_t oldLengthSamples = clipRef.sampleHolder.getDurationInSamples(true);
 							changeUnderlyingSampleStart(clipRef, sample, newStartTicks, oldLength, oldLengthSamples);
