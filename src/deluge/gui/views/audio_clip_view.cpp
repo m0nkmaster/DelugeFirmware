@@ -675,9 +675,17 @@ void AudioClipView::changeUnderlyingSampleStart(AudioClip& clip, const Sample* s
 	else {
 		uint64_t oldValue = clip.sampleHolder.startPos;
 		uint64_t newStartPos = clip.sampleHolder.endPos - newLengthSamples;
+
+		// Prevent moving start point before the original clip's beginning (0)
 		if ((int64_t)newStartPos < 0) {
 			newStartPos = 0;
 		}
+
+		// Only allow moving start point backward if it has already been moved forward
+		if (newStartPos > oldValue && oldValue == 0) {
+			newStartPos = oldValue;
+		}
+
 		clip.sampleHolder.startPos = newStartPos;
 
 		ActionType actionType =
