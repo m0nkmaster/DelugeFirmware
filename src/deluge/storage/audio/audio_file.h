@@ -36,12 +36,12 @@ public:
 
 	// Stealable implementation (partial)
 	// Also implemented by children (WaveTable/Sample)
-	StealableQueue getAppropriateQueue() override;
+	[[nodiscard]] StealableQueue getAppropriateQueue() const override;
 
 	String filePath;
 
 	const AudioFileType type;
-	uint8_t numChannels;
+	uint8_t numChannels{};
 	String loadedFromAlternatePath; // We now need to store this, since "alternate" files can now just have the same
 	                                // filename (in special folder) as the original. So we need to remember which format
 	                                // the name took.

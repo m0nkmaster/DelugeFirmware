@@ -32,8 +32,10 @@ void CVInstrument::noteOnPostArp(int32_t noteCodePostArp, ArpNote* arpNote, int3
 	// First update pitch bend for the new note
 	polyPitchBendValue = (int32_t)arpNote->mpeValues[0] << 16;
 	updatePitchBendOutput(false);
+	auto channel = getPitchChannel();
+	arpNote->outputMemberChannel[noteIndex] = channel;
 
-	cvEngine.sendNote(true, getPitchChannel(), noteCodePostArp);
+	cvEngine.sendNote(true, channel, noteCodePostArp);
 	if (cvmode[1] == CVMode::velocity) {
 		cvEngine.sendVoltageOut(1, arpNote->velocity << 8);
 	}
@@ -160,7 +162,7 @@ void CVInstrument::setupWithoutActiveClip(ModelStack* modelStack) {
 	monophonicPitchBendValue = 0;
 }
 void CVInstrument::sendMonophonicExpressionEvent(int32_t dimension) {
-	int32_t newValue = add_saturation(lastCombinedPolyExpression[dimension], lastMonoExpression[dimension]) >> 16;
+	int32_t new_value = add_saturate(lastCombinedPolyExpression[dimension], lastMonoExpression[dimension]) >> 16;
 	switch (cvmode[1]) {
 
 	case CVMode::off:
@@ -169,12 +171,12 @@ void CVInstrument::sendMonophonicExpressionEvent(int32_t dimension) {
 		break;
 	case CVMode::mod:
 		if (dimension == Expression::Y_SLIDE_TIMBRE) {
-			cvEngine.sendVoltageOut(1, std::max<int32_t>(newValue, 0));
+			cvEngine.sendVoltageOut(1, std::max<int32_t>(new_value, 0));
 		}
 		break;
 	case CVMode::aftertouch:
 		if (dimension == Expression::Z_PRESSURE) {
-			cvEngine.sendVoltageOut(1, newValue);
+			cvEngine.sendVoltageOut(1, new_value);
 		}
 		break;
 	case CVMode::velocity:

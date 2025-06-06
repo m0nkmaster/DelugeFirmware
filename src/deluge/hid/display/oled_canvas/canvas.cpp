@@ -17,6 +17,7 @@
 
 #include "canvas.h"
 #include "definitions_cxx.hpp"
+#include "deluge/util/d_string.h"
 #include "gui/fonts/fonts.h"
 #include "storage/flash_storage.h"
 
@@ -194,6 +195,27 @@ void Canvas::drawStringCentred(char const* string, int32_t pixelY, int32_t textW
 	drawString(str, pixelX, pixelY, textWidth, textHeight);
 }
 
+void Canvas::drawStringCentered(char const* string, int32_t pixelX, int32_t pixelY, int32_t textSpacingX,
+                                int32_t textSpacingY, int32_t totalWidth) {
+	DEF_STACK_STRING_BUF(stringBuf, 12);
+	stringBuf.append(string);
+	drawStringCentered(stringBuf, pixelX, pixelY, textSpacingX, textSpacingY, totalWidth);
+}
+
+void Canvas::drawStringCentered(StringBuf& stringBuf, int32_t pixelX, int32_t pixelY, int32_t textSpacingX,
+                                int32_t textSpacingY, int32_t totalWidth) {
+	int32_t stringWidth;
+
+	// Trim characters from the end until it fits.
+	while ((stringWidth = getStringWidthInPixels(stringBuf.c_str(), textSpacingY)) >= totalWidth - 3) {
+		stringBuf.truncate(stringBuf.size() - 1);
+	}
+
+	// Padding to center the string. If we can't center exactly, 1px left is better than 1px right.
+	const int32_t padding = ((totalWidth - stringWidth) / 2) - 1;
+	drawString(stringBuf.c_str(), pixelX + padding, pixelY, stringWidth, textSpacingY);
+}
+
 /// Draw a string, reducing its height so the string fits within the specified width
 ///
 /// @param string A null-terminated C string
@@ -216,8 +238,11 @@ void Canvas::drawStringCentredShrinkIfNecessary(char const* string, int32_t pixe
 		else if (newHeight >= 10) {
 			newHeight = 10;
 		}
-		else {
+		else if (newHeight >= 7) {
 			newHeight = 7;
+		}
+		else {
+			newHeight = 5;
 		}
 
 		textWidth = maxTextWidth;
@@ -254,6 +279,14 @@ void Canvas::drawChar(uint8_t theChar, int32_t pixelX, int32_t pixelY, int32_t s
 	int32_t fontNativeHeight;
 
 	switch (textHeight) {
+	case 5:
+		[[fallthrough]];
+	case 6:
+		textHeight = 5;
+		descriptor = font_5px_desc;
+		font = font_5px;
+		fontNativeHeight = 5;
+		break;
 	case 9:
 		pixelY++;
 		[[fallthrough]];
@@ -330,13 +363,16 @@ int32_t Canvas::getCharWidthInPixels(uint8_t theChar, int32_t textHeight) {
 	if (charIndex <= 0) {
 		return 0;
 	}
-	// the smaller apple ][ is monospaced, so return standard width of each character
-	else if (textHeight <= 9) {
+	else if (textHeight >= 7 && textHeight <= 9) {
+		// the smaller apple ][ is monospaced, so return standard width of each character
 		return kTextSpacingX;
 	}
 
 	lv_font_glyph_dsc_t const* descriptor;
 	switch (textHeight) {
+	case 5:
+		descriptor = font_5px_desc;
+		break;
 	case 10:
 		descriptor = font_metric_bold_9px_desc;
 		break;
@@ -355,7 +391,7 @@ int32_t Canvas::getCharWidthInPixels(uint8_t theChar, int32_t textHeight) {
 }
 
 int32_t Canvas::getCharSpacingInPixels(uint8_t theChar, int32_t textHeight, bool isLastChar) {
-	bool monospacedFont = (textHeight <= 9);
+	bool monospacedFont = (textHeight >= 7 and textHeight <= 9);
 	// don't add space to the last character
 	if (isLastChar) {
 		return 0;
@@ -364,6 +400,10 @@ int32_t Canvas::getCharSpacingInPixels(uint8_t theChar, int32_t textHeight, bool
 		// smaller apple ][ font is monospaced, so spacing is different
 		if (monospacedFont) {
 			return kTextSpacingX;
+		}
+		// small font is spaced 2px
+		else if (textHeight <= 6) {
+			return 2;
 		}
 		// if character is a space, make spacing 6px instead
 		// (just need to add 5 since previous character added 1 after it)
@@ -376,6 +416,10 @@ int32_t Canvas::getCharSpacingInPixels(uint8_t theChar, int32_t textHeight, bool
 		// as it's handled by the standard char width
 		if (monospacedFont) {
 			return 0;
+		}
+		// small font
+		else if (textHeight <= 6) {
+			return 1;
 		}
 		// default spacing is 2 pixels for bold fonts
 		else {

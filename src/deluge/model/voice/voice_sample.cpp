@@ -34,10 +34,6 @@ extern "C" {}
 
 extern int32_t spareRenderingBuffer[][SSI_TX_BUFFER_NUM_SAMPLES];
 
-VoiceSample::VoiceSample() {
-	timeStretcher = nullptr;
-}
-
 void VoiceSample::beenUnassigned(bool wontBeUsedAgain) {
 	unassignAllReasons(wontBeUsedAgain);
 	endTimeStretching();
@@ -202,7 +198,7 @@ LateStartAttemptStatus VoiceSample::attemptLateSampleStart(SamplePlaybackGuide* 
 	for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
 
 		// Grab it.
-		newClusters[l] = sample->clusters.getElement(clusterIndex)->getCluster(sample, clusterIndex, CLUSTER_ENQUEUE);
+		newClusters[l] = sample->clusters[clusterIndex].getCluster(sample, clusterIndex, CLUSTER_ENQUEUE);
 
 		// If failure (would only happen in insanely rare case where there's no free RAM)
 		if (l == 0 && !newClusters[l]) {
@@ -846,8 +842,8 @@ readCachedWindow:
 
 				int32_t nextUncachedClusterIndex = uncachedClusterIndex;
 				for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
-					clusters[l] = sample->clusters.getElement(nextUncachedClusterIndex)
-					                  ->getCluster(sample, nextUncachedClusterIndex, CLUSTER_ENQUEUE);
+					clusters[l] = sample->clusters[nextUncachedClusterIndex].getCluster(
+					    sample, nextUncachedClusterIndex, CLUSTER_ENQUEUE);
 					if (!clusters[l]) {
 						break;
 					}
@@ -1275,10 +1271,10 @@ readTimestretched:
 				                             << 1;
 
 				newerAmplitudeIncrementNow = preCacheAmplitudeIncrement + hopAmplitudeChange;
-				newerSourceAmplitudeNow = multiply_32x32_rshift32(preCacheAmplitude, newerHopAmplitudeNow) << 1;
+				newerSourceAmplitudeNow = q31_mult(preCacheAmplitude, newerHopAmplitudeNow);
 
 				olderAmplitudeIncrementNow = preCacheAmplitudeIncrement - hopAmplitudeChange;
-				olderSourceAmplitudeNow = multiply_32x32_rshift32(preCacheAmplitude, olderHopAmplitudeNow) << 1;
+				olderSourceAmplitudeNow = q31_mult(preCacheAmplitude, olderHopAmplitudeNow);
 			}
 
 			// Or, if we're just hearing the newer play-head

@@ -64,10 +64,13 @@ LoadSongUI::LoadSongUI() {
 	filePrefix = "SONG";
 	title = "Load song";
 	performingLoad = false;
+	qwertyCurrentlyDrawnOnscreen = false;
 }
 
 bool LoadSongUI::opened() {
 
+	favouritesManager.setCategory("SONG");
+	favouritesChanged();
 	outputTypeToLoad = OutputType::NONE;
 	currentDir.set(&currentSong->dirPath);
 
@@ -172,7 +175,7 @@ void LoadSongUI::enterKeyPress() {
 
 void LoadSongUI::displayArmedPopup() {
 	display->removeWorkingAnimation();
-	display->popupText("Song will begin...");
+	display->popupText("Song will begin...", PopupType::LOADING);
 }
 
 char loopsRemainingText[] = "Loops remaining: xxxxxxxxxxx";
@@ -181,7 +184,7 @@ void LoadSongUI::displayLoopsRemainingPopup() {
 	if (currentUIMode == UI_MODE_LOADING_SONG_UNESSENTIAL_SAMPLES_ARMED) {
 		display->removeWorkingAnimation();
 		intToString(session.numRepeatsTilLaunch, &loopsRemainingText[17]);
-		display->popupText(loopsRemainingText);
+		display->popupText(loopsRemainingText, PopupType::LOADING);
 	}
 }
 
@@ -223,7 +226,16 @@ ActionResult LoadSongUI::buttonAction(deluge::hid::Button b, bool on, bool inCar
 			}
 		}
 	}
-
+	else if (b == KEYBOARD && on) {
+		qwertyAlwaysVisible = !qwertyAlwaysVisible;
+		indicator_leds::setLedState(IndicatorLED::KEYBOARD, qwertyAlwaysVisible);
+		qwertyVisible = qwertyAlwaysVisible;
+		if (qwertyVisible) {
+			favouritesVisible = true;
+			drawKeys();
+			qwertyCurrentlyDrawnOnscreen = true;
+		}
+	}
 	else {
 		return LoadUI::buttonAction(b, on, inCardRoutine);
 	}
@@ -528,7 +540,7 @@ gotErrorAfterCreatingSong:
 		else {
 			display->removeWorkingAnimation();
 			if (display->haveOLED()) {
-				display->popupText("Loading complete");
+				display->popupText("Loading complete", PopupType::LOADING);
 			}
 			else {
 				display->setText("DONE", false, 255, true, NULL, false, true);
@@ -736,8 +748,10 @@ ignoring the file extension.
 
 void LoadSongUI::currentFileChanged(int32_t movementDirection) {
 
-	if (movementDirection) {
+	if (movementDirection && !qwertyAlwaysVisible) {
 		qwertyVisible = false;
+		favouritesVisible = false;
+		qwertyCurrentlyDrawnOnscreen = false;
 
 		// Start horizontal scrolling
 		PadLEDs::horizontal::setupScroll(movementDirection, kDisplayWidth + kSideBarWidth, true,
@@ -836,7 +850,9 @@ ActionResult LoadSongUI::verticalEncoderAction(int32_t offset, bool inCardRoutin
 		}
 		exitAction(); // Exit if your scroll down
 	}
-
+	if (Buttons::isShiftButtonPressed()) {
+		return LoadUI::verticalEncoderAction(offset, false);
+	}
 	return ActionResult::DEALT_WITH;
 }
 
@@ -857,6 +873,10 @@ void LoadSongUI::exitAction() {
 }
 
 void LoadSongUI::drawSongPreview(bool toStore) {
+
+	if (qwertyAlwaysVisible) {
+		return;
+	}
 
 	RGB(*imageStore)[kDisplayWidth + kSideBarWidth];
 	if (toStore) {
@@ -939,11 +959,11 @@ void LoadSongUI::displayText(bool blinkImmediately) {
 
 	LoadUI::displayText();
 
-	if (qwertyVisible) {
+	if (qwertyVisible && !qwertyCurrentlyDrawnOnscreen) {
 		FileItem* currentFileItem = getCurrentFileItem();
 
 		drawKeys();
-
+		qwertyCurrentlyDrawnOnscreen = true;
 		PadLEDs::sendOutSidebarColours();
 	}
 }
@@ -956,12 +976,13 @@ ActionResult LoadSongUI::padAction(int32_t x, int32_t y, int32_t on) {
 				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
 			}
 			qwertyVisible = true;
-			displayText(false); // Necessary still? Not quite sure?
+			favouritesVisible = true;
+			displayText(false); // This will also draw the QWERTY keys
 		}
 	}
 
-	// And process the QWERTY keypress
-	if (qwertyVisible) {
+	// Only process the QWERTY keypress if Keyboard is visible to prevent blind keypresses
+	else if (qwertyVisible) {
 		return LoadUI::padAction(x, y, on);
 	}
 	return ActionResult::DEALT_WITH;

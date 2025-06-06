@@ -21,19 +21,18 @@
 
 class MIDICableUSB : public MIDICable {
 public:
-	MIDICableUSB(uint8_t portNum = 0) {
-		portNumber = portNum;
-		needsToSendMCMs = 0;
-	}
+	MIDICableUSB(uint8_t portNum = 0) : portNumber(portNum) {}
 
 	[[nodiscard]] bool wantsToOutputMIDIOnChannel(MIDIMessage message, int32_t filter) const override;
 
-	void sendMessage(MIDIMessage message) override;
-	void sendSysex(const uint8_t* data, int32_t len) override;
-	size_t sendBufferSpace() const override;
+	[[nodiscard]] Error sendMessage(MIDIMessage message) override;
+	[[nodiscard]] Error sendSysex(const uint8_t* data, int32_t len) override;
+	[[nodiscard]] size_t sendBufferSpace() const override;
 
+	void checkIncomingSysex(uint8_t const* msg, int32_t ip, int32_t d);
 	void connectedNow(int32_t midiDeviceNum);
 	void sendMCMsNowIfNeeded();
-	uint8_t needsToSendMCMs;
+
 	uint8_t portNumber;
+	uint8_t needsToSendMCMs = 0;
 };

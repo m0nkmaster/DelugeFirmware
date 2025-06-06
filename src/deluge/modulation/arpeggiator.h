@@ -40,6 +40,7 @@ constexpr uint32_t ARP_NOTE_NONE = 32767;
 enum class ArpType : uint8_t {
 	SYNTH,
 	DRUM,
+	KIT,
 };
 
 class ArpeggiatorSettings {
@@ -70,6 +71,8 @@ public:
 	ArpPreset preset{ArpPreset::OFF};
 	ArpMode mode{ArpMode::OFF};
 
+	bool includeInKitArp{true};
+
 	// Sequence settings
 	ArpOctaveMode octaveMode{ArpOctaveMode::UP};
 	ArpNoteMode noteMode{ArpNoteMode::UP};
@@ -96,6 +99,7 @@ public:
 	// Spread last lock
 	uint32_t lastLockedNoteProbabilityParameterValue{0};
 	uint32_t lastLockedBassProbabilityParameterValue{0};
+	uint32_t lastLockedStepProbabilityParameterValue{0};
 	uint32_t lastLockedReverseProbabilityParameterValue{0};
 	uint32_t lastLockedChordProbabilityParameterValue{0};
 	uint32_t lastLockedRatchetProbabilityParameterValue{0};
@@ -106,6 +110,7 @@ public:
 	// Pre-calculated randomized values for each parameter
 	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedNoteProbabilityValues;
 	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedBassProbabilityValues;
+	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedStepProbabilityValues;
 	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedReverseProbabilityValues;
 	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedChordProbabilityValues;
 	std::array<int8_t, RANDOMIZER_LOCK_MAX_SAVED_VALUES> lockedRatchetProbabilityValues;
@@ -128,6 +133,7 @@ public:
 	uint32_t ratchetAmount{0};
 	uint32_t noteProbability{4294967295u}; // Default to 25 if not set in XML
 	uint32_t bassProbability{0};
+	uint32_t stepProbability{0};
 	uint32_t reverseProbability{0};
 	uint32_t chordProbability{0};
 	uint32_t ratchetProbability{0};
@@ -231,6 +237,9 @@ public:
 	// Bass probability state
 	bool lastNormalNotePlayedFromBassProbability = false;
 
+	// Step probability state
+	bool lastNormalNotePlayedFromStepProbability = false;
+
 	// Reverse probability state
 	bool lastNormalNotePlayedFromReverseProbability = false;
 
@@ -252,6 +261,7 @@ public:
 	// Calculated spread amounts
 	bool isPlayNoteForCurrentStep = true;
 	bool isPlayBassForCurrentStep = false;
+	bool isPlayRandomStepForCurrentStep = false;
 	bool isPlayReverseForCurrentStep = false;
 	bool isPlayChordForCurrentStep = false;
 	bool isPlayRatchetForCurrentStep = false;
@@ -267,14 +277,15 @@ protected:
 	void resetRatchet();
 	void executeArpStep(ArpeggiatorSettings* settings, uint8_t numActiveNotes, bool isRatchet,
 	                    uint32_t maxSequenceLength, uint32_t rhythm, bool* shouldCarryOnRhythmNote,
-	                    bool* shouldPlayNote, bool* shouldPlayBassNote, bool* shouldPlayReverseNote,
-	                    bool* shouldPlayChordNote);
+	                    bool* shouldPlayNote, bool* shouldPlayBassNote, bool* shouldPlayRandomStep,
+	                    bool* shouldPlayReverseNote, bool* shouldPlayChordNote);
 	void increasePatternIndexes(uint8_t numStepRepeats);
 	void increaseSequenceIndexes(uint32_t maxSequenceLength, uint32_t rhythm);
 	void maybeSetupNewRatchet(ArpeggiatorSettings* settings);
 	bool evaluateRhythm(uint32_t rhythm, bool isRatchet);
 	bool evaluateNoteProbability(bool isRatchet);
 	bool evaluateBassProbability(bool isRatchet);
+	bool evaluateStepProbability(bool isRatchet);
 	bool evaluateReverseProbability(bool isRatchet);
 	bool evaluateChordProbability(bool isRatchet);
 	uint32_t calculateSpreadVelocity(uint8_t velocity, int32_t spreadVelocityForCurrentStep);
@@ -286,7 +297,7 @@ protected:
 	int8_t getRandomWeighted2BitsAmount(uint32_t value);
 };
 
-class ArpeggiatorForDrum final : public ArpeggiatorBase {
+class ArpeggiatorForDrum : public ArpeggiatorBase {
 public:
 	ArpeggiatorForDrum();
 	void noteOn(ArpeggiatorSettings* settings, int32_t noteCode, int32_t velocity, ArpReturnInstruction* instruction,
@@ -297,12 +308,14 @@ public:
 	ArpNote arpNote; // For the one note. noteCode will always be 60. velocity will be 0 if off.
 	int16_t noteForDrum;
 
+	bool invertReversedFromKitArp;
+
 protected:
 	void switchNoteOn(ArpeggiatorSettings* settings, ArpReturnInstruction* instruction, bool isRatchet) override;
 	bool hasAnyInputNotesActive() override;
 };
 
-class Arpeggiator final : public ArpeggiatorBase {
+class Arpeggiator : public ArpeggiatorBase {
 public:
 	Arpeggiator();
 
@@ -324,4 +337,11 @@ public:
 protected:
 	void rearrangePatterntArpNotes(ArpeggiatorSettings* settings);
 	void switchNoteOn(ArpeggiatorSettings* settings, ArpReturnInstruction* instruction, bool isRatchet) override;
+};
+
+class ArpeggiatorForKit : public Arpeggiator {
+public:
+	ArpeggiatorForKit();
+	ArpType getArpType() override { return ArpType::KIT; }
+	void removeDrumIndex(ArpeggiatorSettings* arpSettings, int32_t drumIndex);
 };

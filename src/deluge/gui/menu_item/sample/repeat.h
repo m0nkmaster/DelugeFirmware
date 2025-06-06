@@ -21,6 +21,7 @@
 #include "gui/menu_item/selection.h"
 #include "gui/ui/sound_editor.h"
 #include "gui/views/instrument_clip_view.h"
+#include "model/clip/instrument_clip.h"
 #include "model/drum/drum.h"
 #include "model/instrument/kit.h"
 #include "model/song/song.h"
@@ -43,10 +44,10 @@ public:
 	void writeCurrentValue() override {
 		auto current_value = this->getValue<SampleRepeatMode>();
 
-		// If affect-entire button held, do whole kit
-		if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKit()) {
+		Kit* kit = getCurrentKit();
 
-			Kit* kit = getCurrentKit();
+		// If affect-entire button held, do whole kit
+		if (kit != nullptr && currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR) {
 
 			for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
 				if (thisDrum->type == DrumType::SOUND) {
@@ -55,29 +56,38 @@ public:
 
 					// Automatically switch pitch/speed independence on / off if stretch-to-note-length mode is selected
 					if (current_value == SampleRepeatMode::STRETCH) {
-						soundDrum->unassignAllVoices();
+						soundDrum->killAllVoices();
 						source->sampleControls.pitchAndSpeedAreIndependent = true;
 					}
 					else if (source->repeatMode == SampleRepeatMode::STRETCH) {
-						soundDrum->unassignAllVoices();
+						soundDrum->killAllVoices();
 						soundEditor.currentSource->sampleControls.pitchAndSpeedAreIndependent = false;
+					}
+
+					if (current_value == SampleRepeatMode::ONCE) {
+						// Send note-off for kit arpeggiator to avoid stuck notes
+						sendNoteOffForKitArpeggiator(kit);
 					}
 
 					source->repeatMode = current_value;
 				}
 			}
 		}
-
 		// Or, the normal case of just one sound
 		else {
 			// Automatically switch pitch/speed independence on / off if stretch-to-note-length mode is selected
 			if (static_cast<SampleRepeatMode>(current_value) == SampleRepeatMode::STRETCH) {
-				soundEditor.currentSound->unassignAllVoices();
+				soundEditor.currentSound->killAllVoices();
 				soundEditor.currentSource->sampleControls.pitchAndSpeedAreIndependent = true;
 			}
 			else if (soundEditor.currentSource->repeatMode == SampleRepeatMode::STRETCH) {
-				soundEditor.currentSound->unassignAllVoices();
+				soundEditor.currentSound->killAllVoices();
 				soundEditor.currentSource->sampleControls.pitchAndSpeedAreIndependent = false;
+			}
+
+			if (kit != nullptr && current_value == SampleRepeatMode::ONCE) {
+				// Send note-off for kit arpeggiator to avoid stuck notes
+				sendNoteOffForKitArpeggiator(kit);
 			}
 
 			soundEditor.currentSource->repeatMode = current_value;
@@ -95,6 +105,19 @@ public:
 		    l10n::getView(l10n::String::STRING_FOR_LOOP),
 		    l10n::getView(l10n::String::STRING_FOR_STRETCH),
 		};
+	}
+
+private:
+	void sendNoteOffForKitArpeggiator(Kit* kit) {
+		int32_t noteRowIndex;
+		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowForDrum(kit->selectedDrum, &noteRowIndex);
+		char modelStackMemory[MODEL_STACK_MAX_SIZE];
+		ModelStack* modelStack = (ModelStack*)modelStackMemory;
+		ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
+		    modelStack->addTimelineCounter(getCurrentClip())
+		        ->addNoteRow(noteRowIndex, noteRow)
+		        ->addOtherTwoThings(soundEditor.currentModControllable, soundEditor.currentParamManager);
+		kit->noteOffPreKitArp(modelStackWithThreeMainThings, kit->selectedDrum);
 	}
 };
 

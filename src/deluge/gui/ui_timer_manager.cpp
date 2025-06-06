@@ -76,11 +76,11 @@ void UITimerManager::routine() {
 					break;
 
 				case TimerName::DEFAULT_ROOT_NOTE:
-					if (getCurrentUI() == &instrumentClipView || getCurrentUI() == &automationView) {
-						instrumentClipView.flashDefaultRootNote();
-					}
-					else if (getCurrentUI() == &keyboardScreen) {
+					if (getCurrentUI() == &keyboardScreen) {
 						keyboardScreen.flashDefaultRootNote();
+					}
+					else if (getCurrentUI()->getUIContextType() == UIType::INSTRUMENT_CLIP) {
+						instrumentClipView.flashDefaultRootNote();
 					}
 					break;
 
@@ -89,6 +89,17 @@ void UITimerManager::routine() {
 					break;
 				}
 				case TimerName::DISPLAY:
+					if (display->haveOLED()) {
+						auto* oled = static_cast<deluge::hid::display::OLED*>(display);
+						oled->timerRoutine();
+					}
+					else {
+						display->timerRoutine();
+					}
+
+					break;
+
+				case TimerName::LOADING_ANIMATION:
 					if (display->haveOLED()) {
 						auto* oled = static_cast<deluge::hid::display::OLED*>(display);
 						oled->timerRoutine();

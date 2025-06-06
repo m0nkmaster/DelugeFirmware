@@ -70,7 +70,7 @@ uint32_t MemoryRegion::padSize(uint32_t requiredSize) {
 		}
 		// if it's not a power of 2 go up to the next power of 2
 		if (!((requiredSize & (requiredSize - 1)) == 0)) {
-			int magnitude = 32 - clz(requiredSize);
+			int magnitude = 32 - std::countl_zero(requiredSize);
 			requiredSize = 1 << magnitude;
 		}
 		requiredSize += extraSize;
@@ -282,8 +282,8 @@ void* MemoryRegion::alloc(uint32_t requiredSize, bool makeStealable, void* thing
 	requiredSize = padSize(requiredSize);
 	bool large = requiredSize > pivot_;
 	// set a minimum size	requiredSize = padSize(requiredSize);
-	int32_t allocatedSize;
-	uint32_t allocatedAddress;
+	int32_t allocatedSize = 0;
+	uint32_t allocatedAddress = 0;
 	int32_t i;
 
 	if (!emptySpaces.getNumElements()) {
@@ -382,7 +382,7 @@ noEmptySpace:
 		if (cache_manager_) {
 			allocatedAddress = cache_manager_->ReclaimMemory(*this, requiredSize, thingNotToStealFrom, &allocatedSize);
 		}
-		if (!allocatedAddress) {
+		if (allocatedAddress == 0u) {
 #if ALPHA_OR_BETA_VERSION
 			if (name) {
 				const uint32_t msgBufferLen = 32;

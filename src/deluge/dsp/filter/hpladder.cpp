@@ -27,7 +27,7 @@ q31_t HpLadderFilter::setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMo
 	int32_t resonanceUpperLimit = 536870911;
 	int32_t resonance = ONE_Q31 - (std::min(hpfResonance, resonanceUpperLimit) << 2); // Limits it
 
-	resonance = multiply_32x32_rshift32_rounded(resonance, resonance) << 1;
+	resonance = q31_mult_rounded(resonance, resonance);
 
 	// ONE_Q31 - rawResonance2; // Always between 0 and 2. 1 represented as 1073741824
 	hpfProcessedResonance = ONE_Q31 - resonance;
@@ -37,7 +37,7 @@ q31_t HpLadderFilter::setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMo
 	int32_t hpfProcessedResonanceUnaltered = hpfProcessedResonance;
 
 	// Extra feedback
-	hpfProcessedResonance = multiply_32x32_rshift32(hpfProcessedResonance, extraFeedback) << 1;
+	hpfProcessedResonance = q31_mult(hpfProcessedResonance, extraFeedback);
 
 	hpfDivideByProcessedResonance = (q31_t)(2147483648.0 / (double)(hpfProcessedResonance >> (23)));
 
@@ -58,31 +58,29 @@ q31_t HpLadderFilter::setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMo
 
 	// Adjust volume for HPF resonance
 	q31_t rawResonance = std::min(hpfResonance, (q31_t)ONE_Q31 >> 2) << 2;
-	q31_t squared = multiply_32x32_rshift32(rawResonance, rawResonance) << 1;
+	q31_t squared = q31_mult(rawResonance, rawResonance);
 
 	// Make bigger to have more of a volume cut happen at high resonance
 	squared = (multiply_32x32_rshift32(squared, squared) >> 4) * 19;
-	filterGain = multiply_32x32_rshift32(filterGain, ONE_Q31 - squared) << 1;
+	filterGain = q31_mult(filterGain, ONE_Q31 - squared);
 
 	return filterGain;
 }
-[[gnu::hot]] void HpLadderFilter::doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement) {
-	q31_t* currentSample = startSample;
-	do {
-		*currentSample = doHPF(*currentSample, l);
-		currentSample += sampleIncrement;
-	} while (currentSample < endSample);
+
+[[gnu::hot]] void HpLadderFilter::doFilter(std::span<q31_t> buffer) {
+	for (auto& sample : buffer) {
+		sample = doHPF(sample, l);
+	}
 }
-// filter an interleaved stereo buffer
-[[gnu::hot]] void HpLadderFilter::doFilterStereo(q31_t* startSample, q31_t* endSample) {
-	q31_t* currentSample = startSample;
-	do {
-		*currentSample = doHPF(*currentSample, l);
-		currentSample += 1;
-		*currentSample = doHPF(*currentSample, r);
-		currentSample += 1;
-	} while (currentSample < endSample);
+
+/// filter an interleaved stereo buffer
+[[gnu::hot]] void HpLadderFilter::doFilterStereo(std::span<StereoSample> buffer) {
+	for (auto& sample : buffer) {
+		sample.l = doHPF(sample.l, l);
+		sample.r = doHPF(sample.r, r);
+	}
 }
+
 [[gnu::always_inline]] inline q31_t HpLadderFilter::doHPF(q31_t input, HPLadderState& state) {
 	// inputs are only 16 bit so this is pretty small
 	// this limit was found experimentally as about the lowest fc can get without sounding broken

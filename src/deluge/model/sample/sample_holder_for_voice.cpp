@@ -35,8 +35,8 @@ SampleHolderForVoice::SampleHolderForVoice() {
 	startMSec = 0;
 	endMSec = 0;
 
-	for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
-		clustersForLoopStart[l] = nullptr;
+	for (auto& l : clustersForLoopStart) {
+		l = nullptr;
 	}
 }
 
@@ -93,7 +93,7 @@ void SampleHolderForVoice::claimClusterReasons(bool reversed, int32_t clusterLoa
 		                             clusterLoadInstruction);
 	}
 
-	else if (((Sample*)audioFile)->clusters.getNumElements() <= 4) {
+	else if (((Sample*)audioFile)->clusters.size() <= 4) {
 		// claim the next few reasons for the sample instead since we can keep it all cached
 		int32_t nextClusterStartByte = (((Sample*)audioFile)->audioDataStartPosBytes + Cluster::size_magnitude) << 1;
 

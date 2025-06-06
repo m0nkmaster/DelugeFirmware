@@ -19,6 +19,7 @@
 
 #include "RZA1/sdhi/inc/sdif.h"
 #include "definitions_cxx.hpp"
+#include "deluge/io/usb//usb_state.h"
 #include "drivers/pic/pic.h"
 #include "gui/ui/audio_recorder.h"
 #include "gui/ui/browser/browser.h"
@@ -48,6 +49,8 @@
 #include "io/midi/midi_device_manager.h"
 #include "io/midi/midi_engine.h"
 #include "io/midi/midi_follow.h"
+#include "io/midi/root_complex/usb_hosted.h"
+#include "io/midi/root_complex/usb_peripheral.h"
 #include "lib/printf.h" // IWYU pragma: keep this over rides printf with a non allocating version
 #include "memory/general_memory_allocator.h"
 #include "model/clip/instrument_clip.h"
@@ -241,14 +244,6 @@ bool readButtonsAndPads() {
 	if (!usbInitializationPeriodComplete && (int32_t)(AudioEngine::audioSampleTimer - timeUSBInitializationEnds) >= 0) {
 		usbInitializationPeriodComplete = 1;
 	}
-
-	/*
-	if (!inSDRoutine && !closedPeripheral && !anythingInitiallyAttachedAsUSBHost && AudioEngine::audioSampleTimer >=
-	(44100 << 1)) { D_PRINTLN("closing peripheral"); closeUSBPeripheral(); D_PRINTLN("switching back to host");
-	    openUSBHost();
-	    closedPeripheral = true;
-	}
-	*/
 
 	if (waitingForSDRoutineToEnd) {
 		if (sdRoutineLock) {
@@ -463,6 +458,8 @@ void setupBlankSong() {
 	AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
 }
 
+#pragma GCC push
+#pragma GCC diagnostic ignored "-Wstack-usage="
 /// Can only happen after settings, which includes default settings, have been read
 void setupStartupSong() {
 
@@ -472,8 +469,13 @@ void setupStartupSong() {
 	    startupSongMode == StartupSongMode::TEMPLATE ? defaultSongFullPath : runtimeFeatureSettings.getStartupSong();
 	String failSafePath;
 	failSafePath.concatenate("SONGS/__STARTUP_OFF_CHECK_");
+	auto size = strlen(filename) + 1;
+	if (size > 2048) {
+		display->displayPopup("Error reading filename");
+		return;
+	}
 
-	char replaced[sizeof(char) * strlen(filename) + 1]; // +1 for NULL terminator
+	char replaced[sizeof(char) * size]; // +1 for NULL terminator
 	replace_char(replaced, filename, '/', '_');
 	failSafePath.concatenate(replaced);
 
@@ -526,6 +528,7 @@ void setupStartupSong() {
 		return;
 	}
 }
+#pragma GCC pop
 
 void setupOLED() {
 	// delayMS(10);
@@ -552,8 +555,6 @@ void setupOLED() {
 
 extern "C" void usb_pstd_pcd_task(void);
 extern "C" void usb_cstd_usb_task(void);
-
-extern "C" volatile uint32_t usbLock;
 
 extern "C" void usb_main_host(void);
 
@@ -853,20 +854,26 @@ extern "C" int32_t deluge_main(void) {
 		deluge::hid::display::swapDisplayType();
 	}
 
-	usbLock = 1;
-	openUSBHost();
+	{
+		deluge::io::usb::USBAutoLock lock;
+		openUSBHost();
 
-	// If nothing was plugged in to us as host, we'll go peripheral
-	// Ideally I'd like to repeatedly switch between host and peripheral mode anytime there's no USB connection.
-	// To do that, I'd really need to know at any point in time whether the user had just made a connection, just then,
-	// that hadn't fully initialized yet. I think I sorta have that for host, but not for peripheral yet.
-	if (!anythingInitiallyAttachedAsUSBHost) {
-		D_PRINTLN("switching from host to peripheral");
-		closeUSBHost();
-		openUSBPeripheral();
+		if (anythingInitiallyAttachedAsUSBHost == 0) {
+			// If nothing was plugged in to us as host, we'll go peripheral
+			// Ideally I'd like to repeatedly switch between host and peripheral mode anytime there's no USB connection.
+			// To do that, I'd really need to know at any point in time whether the user had just made a connection,
+			// just then, that hadn't fully initialized yet. I think I sorta have that for host, but not for peripheral
+			// yet.
+			D_PRINTLN("switching from host to peripheral");
+			closeUSBHost();
+			openUSBPeripheral();
+
+			// configuredAsPeripheral will set the root complex.
+		}
+		else {
+			MIDIDeviceManager::setUSBRoot(new MIDIRootComplexUSBHosted());
+		}
 	}
-
-	usbLock = 0;
 
 	// Hopefully we can read these files now
 	runtimeFeatureSettings.readSettingsFromFile();
@@ -1068,8 +1075,8 @@ void deleteOldSongBeforeLoadingNew() {
 
 	currentSong->stopAllAuditioning();
 
-	AudioEngine::unassignAllVoices(true); // Need to do this now that we're not bothering getting the old Song's
-	                                      // Instruments detached and everything on delete
+	AudioEngine::killAllVoices(true); // Need to do this now that we're not bothering getting the old Song's
+	                                  // Instruments detached and everything on delete
 
 	view.activeModControllableModelStack.modControllable = nullptr;
 	view.activeModControllableModelStack.setTimelineCounter(nullptr);

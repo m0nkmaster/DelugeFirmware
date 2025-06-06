@@ -19,7 +19,6 @@
 
 #include "definitions_cxx.hpp"
 #include "model/sample/sample_cluster.h"
-#include "model/sample/sample_cluster_array.h"
 #include "storage/audio/audio_file.h"
 #include "util/container/array/ordered_resizeable_array.h"
 #include "util/container/array/ordered_resizeable_array_with_multi_word_key.h"
@@ -39,9 +38,8 @@ enum class RawDataFormat : uint8_t {
 	ENDIANNESS_WRONG_32 = 5,
 };
 
-#define MIDI_NOTE_UNSET -999
-#define MIDI_NOTE_ERROR -1000
-
+const float MIDI_NOTE_UNSET = (-999);
+const float MIDI_NOTE_ERROR = (-1000);
 class LoadedSamplePosReason;
 class SampleCache;
 class MultisampleRange;
@@ -107,11 +105,11 @@ public:
 	}
 
 	String tempFilePathForRecording;
-	uint8_t byteDepth;
-	uint32_t sampleRate;
+	uint8_t byteDepth{0};
+	uint32_t sampleRate{44100};
 	uint32_t audioDataStartPosBytes; // That is, the offset from the start of the WAV file
 	uint64_t audioDataLengthBytes;
-	uint32_t bitMask;
+	uint32_t bitMask{0};
 	bool audioStartDetected;
 
 	uint64_t lengthInSamples;
@@ -124,11 +122,11 @@ public:
 
 	RawDataFormat rawDataFormat;
 
-	bool unloadable; // Only gets set to true if user has re-inserted the card and the sample appears to have been
-	                 // deleted / moved / modified
-	bool unplayable;
+	bool unloadable{false}; // Only gets set to true if user has re-inserted the card and the sample appears to have
+	                        // been deleted / moved / modified
+	bool unplayable{false};
 	bool partOfFolderBeingLoaded;
-	bool fileExplicitlySpecifiesSelfAsWaveTable;
+	bool fileExplicitlySpecifiesSelfAsWaveTable{false};
 
 #if SAMPLE_DO_LOCKS
 	bool lock;
@@ -142,18 +140,18 @@ public:
 
 	OrderedResizeableArrayWithMultiWordKey caches;
 
-	uint8_t* percCacheMemory[2];                          // One for each play-direction: 0=forwards; 1=reversed
+	uint8_t* percCacheMemory[2]{nullptr, nullptr};        // One for each play-direction: 0=forwards; 1=reversed
 	OrderedResizeableArrayWith32bitKey percCacheZones[2]; // One for each play-direction: 0=forwards; 1=reversed
 
-	Cluster** percCacheClusters[2]; // One for each play-direction: 0=forwards; 1=reversed
-	int32_t numPercCacheClusters;
+	Cluster** percCacheClusters[2]{nullptr, nullptr}; // One for each play-direction: 0=forwards; 1=reversed
+	int32_t numPercCacheClusters{};
 
 	int32_t beginningOffsetForPitchDetection;
 	bool beginningOffsetForPitchDetectionFound;
 
-	uint32_t waveTableCycleSize; // In case this later gets used for a WaveTable
+	uint32_t waveTableCycleSize{0}; // In case this later gets used for a WaveTable
 
-	SampleClusterArray clusters;
+	std::vector<SampleCluster> clusters;
 
 	// Stealable Implementation
 	bool mayBeStolen(void* thingNotToStealFrom = nullptr) override;

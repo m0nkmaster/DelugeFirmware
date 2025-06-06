@@ -121,13 +121,11 @@ extern "C" uint32_t triggerClockRisingEdgesReceived;
 extern "C" uint32_t triggerClockRisingEdgesProcessed;
 
 void PlaybackHandler::midiRoutine() {
-	// Check incoming USB MIDI
-	midiEngine.checkIncomingUsbMidi();
-
-	// Check incoming Serial MIDI
-	for (int32_t i = 0; i < 12 && midiEngine.checkIncomingSerialMidi(); i++) {
-		;
+	if ((stemExport.processStarted && stemExport.renderOffline)) [[unlikely]] {
+		//  todo - should add the ability to block the task in the task manager instead but whatever
+		return;
 	}
+	midiEngine.checkIncomingMidi();
 }
 
 // This function will be called repeatedly, at all times, to see if it's time to do a tick, and such
@@ -1355,13 +1353,13 @@ void PlaybackHandler::doSongSwap(bool preservePlayPosition) {
 				preLoadedSong->timePerTimerTickBig = currentSong->timePerTimerTickBig;
 			}
 
-			// Any MIDI or gate notes wouldn't be stopped by our unassignAllVoices() call below
+			// Any MIDI or gate notes wouldn't be stopped by our killAllVoices() call below
 			currentSong->stopAllMIDIAndGateNotesPlaying();
 		}
 	}
 
 	// Swap stuff over
-	AudioEngine::unassignAllVoices(true);
+	AudioEngine::killAllVoices(true);
 	midiFollow.clearStoredClips(); // need to clear clip pointers stored for previous song
 	currentSong = preLoadedSong;
 	AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
@@ -3197,8 +3195,8 @@ doCreateNextOverdub:
 
 			// If we're holding down a Clip in Session View, prioritize that
 			if (getRootUI() == &sessionView && currentUIMode == UI_MODE_CLIP_PRESSED_IN_SONG_VIEW) {
-				clipToCreateOverdubFrom = sessionView.getClipOnScreen(sessionView.selectedClipPressYDisplay);
-				clipIndexToCreateOverdubFrom = sessionView.selectedClipPressYDisplay + currentSong->songViewYScroll;
+				clipToCreateOverdubFrom = sessionView.getClipForLayout();
+				clipIndexToCreateOverdubFrom = sessionView.getClipIndexForLayout();
 				sessionView.performActionOnPadRelease = false;
 			}
 

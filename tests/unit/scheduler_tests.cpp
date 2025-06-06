@@ -13,8 +13,11 @@
 #include <unistd.h>
 #endif
 
+namespace deluge::io::usb {
+volatile bool usbLock = false;
+}
+
 uint8_t currentlyAccessingCard = false;
-uint32_t usbLock = false;
 bool sdRoutineLock = false;
 namespace {
 
@@ -57,9 +60,9 @@ void yield_2ms() {
 void yield_2ms_with_lock() {
 	mock().actualCall("yield_2ms");
 	started = getTimerValueSeconds(0);
-	usbLock = true;
+
+	deluge::io::usb::USBAutoLock lock_;
 	yield([]() { return getTimerValueSeconds(0) > started + Time(0.002); });
-	usbLock = false;
 }
 
 TEST_GROUP(Scheduler){

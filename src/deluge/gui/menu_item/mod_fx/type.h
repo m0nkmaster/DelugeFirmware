@@ -16,11 +16,14 @@
  */
 #pragma once
 #include "definitions_cxx.hpp"
-#include "gui/l10n/l10n.h"
 #include "gui/menu_item/selection.h"
 #include "gui/ui/sound_editor.h"
+#include "model/drum/drum.h"
+#include "model/instrument/kit.h"
 #include "model/mod_controllable/mod_controllable_audio.h"
-#include "model/settings/runtime_feature_settings.h"
+#include "model/song/song.h"
+#include "processing/sound/sound.h"
+#include "processing/sound/sound_drum.h"
 
 namespace deluge::gui::menu_item::mod_fx {
 
@@ -29,15 +32,75 @@ public:
 	using Selection::Selection;
 
 	void readCurrentValue() override { this->setValue(soundEditor.currentModControllable->modFXType_); }
+	bool usesAffectEntire() override { return true; }
 	void writeCurrentValue() override {
-		if (!soundEditor.currentModControllable->setModFXType(this->getValue<ModFXType>())) {
-			display->displayError(Error::INSUFFICIENT_RAM);
+		auto current_value = this->getValue<ModFXType>();
+		// If affect-entire button held, do whole kit
+		if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
+
+			Kit* kit = getCurrentKit();
+
+			bool some_error = false;
+			for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
+				if (thisDrum->type == DrumType::SOUND) {
+					auto* soundDrum = static_cast<SoundDrum*>(thisDrum);
+					if (!soundDrum->setModFXType(current_value)) {
+						some_error = true;
+					}
+				}
+			}
+			if (some_error) {
+				display->displayError(Error::INSUFFICIENT_RAM);
+			}
+		}
+		// Or, the normal case of just one sound
+		else {
+			if (!soundEditor.currentModControllable->setModFXType(current_value)) {
+				display->displayError(Error::INSUFFICIENT_RAM);
+			}
 		}
 	}
 
 	deluge::vector<std::string_view> getOptions(OptType optType) override {
 		(void)optType;
 		return modfx::getModNames();
+	}
+
+	[[nodiscard]] int32_t getColumnSpan() const override {
+		// Occupy the whole page in the horizontal menu
+		return 4;
+	}
+
+	void renderInHorizontalMenu(int32_t startX, int32_t width, int32_t startY, int32_t height) override {
+		deluge::hid::display::oled_canvas::Canvas& image = deluge::hid::display::OLED::main;
+
+		DEF_STACK_STRING_BUF(shortOpt, kShortStringBufferSize);
+		getShortOption(shortOpt);
+
+		constexpr int32_t arrowSpace = 10; // Space reserved for each arrow
+
+		// Get main text width and trim if needed
+		int32_t pxLen = image.getStringWidthInPixels(shortOpt.c_str(), kTextSpacingY);
+		while (pxLen >= width - (2 * arrowSpace)) {
+			shortOpt.truncate(shortOpt.size() - 1);
+			pxLen = image.getStringWidthInPixels(shortOpt.c_str(), kTextSpacingY);
+		}
+
+		// Calculate center positions
+		int32_t textStartX = startX + ((width - pxLen) / 2);
+		int32_t textStartY = startY + ((height - kTextSpacingY) / 2) + 1;
+
+		// Draw arrows if needed
+		if (getValue() > 0) {
+			image.drawString("<", startX + 2, textStartY, kTextTitleSpacingX, kTextTitleSizeY);
+		}
+
+		// Draw main text
+		image.drawString(shortOpt.c_str(), textStartX, textStartY, kTextSpacingX, kTextSpacingY);
+
+		if (getValue() < size() - 1) {
+			image.drawString(">", OLED_MAIN_WIDTH_PIXELS - arrowSpace, textStartY, kTextTitleSpacingX, kTextTitleSizeY);
+		}
 	}
 };
 } // namespace deluge::gui::menu_item::mod_fx

@@ -15,27 +15,20 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 #include "dsp/filter/svf.h"
+#include "dsp/stereo_sample.h"
 
 namespace deluge::dsp::filter {
-[[gnu::hot]] void SVFilter::doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrememt) {
-	q31_t* currentSample = startSample;
-	do {
-		q31_t outs = doSVF(*currentSample, l);
-		*currentSample = outs;
-
-		currentSample += sampleIncrememt;
-	} while (currentSample < endSample);
+[[gnu::hot]] void SVFilter::doFilter(std::span<q31_t> buffer) {
+	for (auto& sample : buffer) {
+		sample = doSVF(sample, l);
+	}
 }
-[[gnu::hot]] void SVFilter::doFilterStereo(q31_t* startSample, q31_t* endSample) {
-	q31_t* currentSample = startSample;
-	do {
-		q31_t outs = doSVF(*currentSample, l);
 
-		*currentSample = outs;
-		q31_t outs2 = doSVF(*(currentSample + 1), r);
-		*(currentSample + 1) = outs2;
-		currentSample += 2;
-	} while (currentSample < endSample);
+[[gnu::hot]] void SVFilter::doFilterStereo(std::span<StereoSample> buffer) {
+	for (auto& sample : buffer) {
+		sample.l = doSVF(sample.l, l);
+		sample.r = doSVF(sample.r, r);
+	}
 }
 
 q31_t SVFilter::setConfig(q31_t freq, q31_t res, FilterMode lpfMode, q31_t lpfMorph, q31_t filterGain) {
@@ -52,7 +45,7 @@ q31_t SVFilter::setConfig(q31_t freq, q31_t res, FilterMode lpfMode, q31_t lpfMo
 	in = (q >> 1) + (ONE_Q31 >> 1);
 	// squared q is a better match for the ladders
 	// also the input scale needs to be sqrt(q) for the level compensation to work so it's a win win
-	q = multiply_32x32_rshift32_rounded(q, q) << 1;
+	q = q31_mult_rounded(q, q);
 
 	// note - the if statements are to avoid overflow issues
 	// do not remove

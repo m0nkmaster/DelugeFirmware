@@ -23,6 +23,7 @@
 #include "storage/audio/audio_file_manager.h"
 #include "util/misc.h"
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstring>
 
@@ -34,7 +35,7 @@ void Cluster::setSize(size_t size) {
 	Cluster::size = size;
 
 	// Find the highest bit set
-	Cluster::size_magnitude = 32 - __builtin_clz(size) - 1;
+	Cluster::size_magnitude = 32 - std::countl_zero(size) - 1;
 }
 
 Cluster* Cluster::create(Cluster::Type type, bool shouldAddReasons, void* dontStealFromThing) {
@@ -160,7 +161,7 @@ void Cluster::convertDataIfNecessary() {
 	}
 }
 
-StealableQueue Cluster::getAppropriateQueue() {
+StealableQueue Cluster::getAppropriateQueue() const {
 	StealableQueue q;
 
 	// If it's a perc cache...
@@ -196,8 +197,9 @@ void Cluster::steal(char const* errorCode) {
 	case Type::SAMPLE:
 		if (ALPHA_OR_BETA_VERSION && sample == nullptr) {
 			FREEZE_WITH_ERROR("E181");
+			std::terminate();
 		}
-		sample->clusters.getElement(clusterIndex)->cluster = nullptr;
+		sample->clusters[clusterIndex].cluster = nullptr;
 		break;
 
 	case Type::SAMPLE_CACHE:
@@ -257,7 +259,7 @@ void Cluster::addReason() {
 	// If it's going to cease to be zero, it's become unavailable,
 	// so remove it from the stealables queue
 	if (this->numReasonsToBeLoaded == 0) {
-		this->remove();
+		this->unlink(); // Remove from stealables queue
 	}
 
 	this->numReasonsToBeLoaded++;

@@ -23,44 +23,17 @@
 #include "storage/storage_manager.h"
 #include "util/functions.h"
 
-NonAudioDrum::NonAudioDrum(DrumType newType) : Drum(newType) {
-	state = false;
-	channelEncoderCurrentOffset = 0;
-}
-
-bool NonAudioDrum::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
-	return true;
-}
-
-void NonAudioDrum::unassignAllVoices() {
-	if (hasAnyVoices()) {
+void NonAudioDrum::killAllVoices() {
+	if (hasActiveVoices()) {
 		noteOff(nullptr);
 	}
+	arpeggiator.reset();
 }
-
-bool NonAudioDrum::anyNoteIsOn() {
-	return state;
-}
-
-bool NonAudioDrum::hasAnyVoices() {
-	return state;
-}
-
-/*
-int8_t NonAudioDrum::getModKnobLevel(uint8_t whichModEncoder, ParamManagerBase* paramManager, uint32_t pos,
-TimelineCounter* playPositionCounter) { if (whichModEncoder == 0) { channelEncoderCurrentOffset = 0;
-    }
-    return -64;
-}
-*/
 
 int8_t NonAudioDrum::modEncoderAction(ModelStackWithThreeMainThings* modelStack, int8_t offset,
                                       uint8_t whichModEncoder) {
 
-	if ((getCurrentUI() == &instrumentClipView
-	     || (getCurrentUI() == &automationView
-	         && automationView.getAutomationSubType() == AutomationSubType::INSTRUMENT))
-	    && currentUIMode == UI_MODE_AUDITIONING) {
+	if ((getCurrentUI()->getUIContextType() == UIType::INSTRUMENT_CLIP) && (currentUIMode == UI_MODE_AUDITIONING)) {
 		if (whichModEncoder == 0) {
 			modChange(modelStack, offset, &channelEncoderCurrentOffset, &channel, getNumChannels());
 		}
@@ -87,7 +60,7 @@ void NonAudioDrum::modChange(ModelStackWithThreeMainThings* modelStack, int32_t 
 		return;
 	}
 
-	bool wasOn = state;
+	bool wasOn = state_;
 	if (wasOn) {
 		noteOff(nullptr);
 	}
@@ -107,7 +80,7 @@ void NonAudioDrum::modChange(ModelStackWithThreeMainThings* modelStack, int32_t 
 	instrumentClipView.drawDrumName(this, true);
 
 	if (wasOn) {
-		noteOn(modelStack, lastVelocity, nullptr, zeroMPEValues);
+		noteOn(modelStack, lastVelocity, zeroMPEValues);
 	}
 }
 

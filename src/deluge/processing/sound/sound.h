@@ -20,6 +20,7 @@
 #include "definitions_cxx.hpp"
 #include "model/mod_controllable/mod_controllable_audio.h"
 #include "model/sample/sample_recorder.h"
+#include "model/voiced.h"
 #include "modulation/arpeggiator.h"
 #include "modulation/knob.h"
 #include "modulation/lfo.h"
@@ -28,9 +29,11 @@
 #include "modulation/params/param_set.h"
 #include "modulation/patch/patcher.h"
 #include "modulation/sidechain/sidechain.h"
+#include "processing/engines/audio_engine.h"
 #include "processing/source.h"
 #include "util/misc.h"
 #include <bitset>
+#include <memory>
 
 struct CableGroup;
 class StereoSample;
@@ -42,7 +45,6 @@ class Clip;
 class GlobalEffectableForClip;
 class ModelStackWithThreeMainThings;
 class ModelStackWithSoundFlags;
-class ModelStackWithVoice;
 class ModelStackWithModControllable;
 
 #define PARAM_LPF_OFF (-1)
@@ -66,29 +68,32 @@ struct ParamLPF {
  * Drum - one of the many items in a Kit, normally associated with a row of notes.
  */
 
-class Sound : public ModControllableAudio {
+class Sound : public ModControllableAudio, public virtual Voiced {
 public:
+	using ActiveVoice = AudioEngine::VoicePool::pointer_type;
+
 	Sound();
+	~Sound() override { std::erase(AudioEngine::sounds, this); }
 
 	Patcher patcher;
 
-	ParamLPF paramLPF;
+	ParamLPF paramLPF{};
 
 	Source sources[kNumSources];
 
 	// This is for the *global* params only, and begins with FIRST_GLOBAL_PARAM, so subtract that from your p value
 	// before accessing this array!
 	std::array<int32_t, deluge::modulation::params::kNumParams - deluge::modulation::params::FIRST_GLOBAL>
-	    paramFinalValues;
-	std::array<int32_t, util::to_underlying(kFirstLocalSource)> globalSourceValues;
+	    paramFinalValues{};
+	std::array<int32_t, util::to_underlying(kFirstLocalSource)> globalSourceValues{};
 
-	uint32_t sourcesChanged; // Applies from first source up to FIRST_UNCHANGEABLE_SOURCE
+	uint32_t sourcesChanged{}; // Applies from first source up to FIRST_UNCHANGEABLE_SOURCE
 
 	LFO globalLFO1;
 	LFO globalLFO3;
 	LFOConfig lfoConfig[LFO_COUNT];
 
-	bool invertReversed; // Used by the arpeggiator to invert the reverse flag just for the current voice
+	bool invertReversed{}; // Used by the arpeggiator to invert the reverse flag just for the current voice
 
 	// December 3, 2024
 	// @todo
@@ -105,59 +110,57 @@ public:
 
 	alignas(8) ModKnob modKnobs[kNumModButtons][kNumPhysicalModKnobs];
 
-	int32_t sideChainSendLevel;
+	int32_t sideChainSendLevel = 0;
 
-	PolyphonyMode polyphonic;
-	uint8_t maxVoiceCount{8};
+	PolyphonyMode polyphonic = PolyphonyMode::POLY;
+	uint8_t maxVoiceCount = 8;
 
-	int16_t transpose;
+	int16_t transpose = 0;
 
-	uint8_t numUnison;
-	int8_t unisonDetune;
-	uint8_t unisonStereoSpread;
+	uint8_t numUnison = 1;
+	int8_t unisonDetune = 8;
+	uint8_t unisonStereoSpread = 0;
 
 	// For sending MIDI notes for SoundDrums
-	uint8_t outputMidiChannel{MIDI_CHANNEL_NONE};
-	uint8_t outputMidiNoteForDrum{MIDI_NOTE_NONE};
+	uint8_t outputMidiChannel = MIDI_CHANNEL_NONE;
+	uint8_t outputMidiNoteForDrum = MIDI_NOTE_NONE;
 
-	int16_t modulatorTranspose[kNumModulators];
-	int8_t modulatorCents[kNumModulators];
+	int16_t modulatorTranspose[kNumModulators] = {0, -12};
+	int8_t modulatorCents[kNumModulators] = {0, 0};
 
 	PhaseIncrementFineTuner modulatorTransposers[kNumModulators];
 
 	PhaseIncrementFineTuner unisonDetuners[kMaxNumVoicesUnison];
-	int32_t unisonPan[kMaxNumVoicesUnison];
+	int32_t unisonPan[kMaxNumVoicesUnison]{};
 
-	SynthMode synthMode;
-	bool modulator1ToModulator0;
+	SynthMode synthMode = SynthMode::SUBTRACTIVE;
+	bool modulator1ToModulator0 = false;
 
-	int32_t volumeNeutralValueForUnison;
+	int32_t volumeNeutralValueForUnison{0};
 
-	int32_t lastNoteCode;
+	int32_t lastNoteCode = std::numeric_limits<int32_t>::min();
 
-	// int32_t lastMidiNoteOffSent;
+	bool oscillatorSync = false;
 
-	bool oscillatorSync;
+	VoicePriority voicePriority = VoicePriority::MEDIUM;
 
-	VoicePriority voicePriority;
+	bool skippingRendering = true;
 
-	bool skippingRendering;
-
-	std::bitset<kNumExpressionDimensions> expressionSourcesChangedAtSynthLevel;
+	std::bitset<kNumExpressionDimensions> expressionSourcesChangedAtSynthLevel{0};
 
 	// I really didn't want to store these here, since they're stored in the ParamManager, but.... complications! Always
 	// 0 for Drums - that was part of the problem - a Drum's main ParamManager's expression data has been sent to the
 	// "polyphonic" bit, and we don't want it to get referred to twice. These get manually refreshed in setActiveClip().
-	int32_t monophonicExpressionValues[kNumExpressionDimensions];
+	std::array<int32_t, kNumExpressionDimensions> monophonicExpressionValues{};
 
-	uint32_t oscRetriggerPhase[kNumSources]; // 4294967295 means "off"
-	uint32_t modulatorRetriggerPhase[kNumModulators];
+	std::array<uint32_t, kNumSources> oscRetriggerPhase{}; // 4294967295 means "off"
+	std::array<uint32_t, kNumModulators> modulatorRetriggerPhase{};
 
-	uint32_t timeStartedSkippingRenderingModFX;
-	uint32_t timeStartedSkippingRenderingLFO;
-	uint32_t timeStartedSkippingRenderingArp;
-	uint32_t startSkippingRenderingAtTime; // Valid when not 0. Allows a wait-time before render skipping starts, for if
-	                                       // mod fx are on
+	uint32_t timeStartedSkippingRenderingModFX{0};
+	uint32_t timeStartedSkippingRenderingLFO{0};
+	uint32_t timeStartedSkippingRenderingArp{0};
+	uint32_t startSkippingRenderingAtTime = 0; // Valid when not 0. Allows a wait-time before render skipping starts,
+	                                           // for if mod fx are on
 
 	virtual ArpeggiatorSettings* getArpSettings(InstrumentClip* clip = nullptr) = 0;
 	virtual void setSkippingRendering(bool newSkipping);
@@ -171,7 +174,6 @@ public:
 	            int32_t sideChainHitPending, int32_t reverbAmountAdjust = 134217728,
 	            bool shouldLimitDelayFeedback = false, int32_t pitchAdjust = kMaxSampleValue,
 	            SampleRecorder* recorder = nullptr);
-	void unassignAllVoices();
 
 	void ensureInaccessibleParamPresetValuesWithoutKnobsAreZero(Song* song) final; // Song may be NULL
 	void ensureInaccessibleParamPresetValuesWithoutKnobsAreZero(ModelStackWithThreeMainThings* modelStack);
@@ -200,9 +202,8 @@ public:
 	                   ArpeggiatorSettings* arpSettings);
 	void writeToFile(Serializer& writer, bool savingSong, ParamManager* paramManager, ArpeggiatorSettings* arpSettings,
 	                 const char* pathAttribute = NULL);
-	bool allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop = false) override;
 
-	void voiceUnassigned(ModelStackWithVoice* modelStack);
+	void voiceUnassigned(ModelStackWithSoundFlags* modelStack);
 	bool isSourceActiveCurrently(int32_t s, ParamManagerForTimeline* paramManager);
 	bool isSourceActiveEverDisregardingMissingSample(int32_t s, ParamManager* paramManager);
 	bool isSourceActiveEver(int32_t s, ParamManager* paramManager);
@@ -225,8 +226,8 @@ public:
 	int16_t getMaxOscTranspose(InstrumentClip* clip);
 	int16_t getMinOscTranspose();
 	void setSynthMode(SynthMode value, Song* song);
-	inline SynthMode getSynthMode() const { return synthMode; }
-	bool anyNoteIsOn();
+	[[nodiscard]] SynthMode getSynthMode() const { return synthMode; }
+
 	virtual bool isDrum() { return false; }
 	void setupAsSample(ParamManagerForTimeline* paramManager);
 	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
@@ -235,7 +236,6 @@ public:
 	bool envelopeHasSustainEver(int32_t e, ParamManagerForTimeline* paramManager);
 	bool renderingOscillatorSyncCurrently(ParamManagerForTimeline* paramManager);
 	bool renderingOscillatorSyncEver(ParamManager* paramManager);
-	bool hasAnyVoices(bool resetTimeEntered);
 	void setupAsBlankSynth(ParamManager* paramManager, bool is_dx = false);
 	void setupAsDefaultSynth(ParamManager* paramManager);
 	void modButtonAction(uint8_t whichModButton, bool on, ParamManagerForTimeline* paramManager) final;
@@ -266,7 +266,6 @@ public:
 	                            int32_t* highestReverbAmountFound, ParamManagerForTimeline* paramManager);
 	virtual bool readTagFromFile(Deserializer& reader, char const* tagName) = 0;
 	void detachSourcesFromAudioFiles();
-	void confirmNumVoices(char const* error);
 
 	// Yup, inlining this helped a tiny bit.
 	[[gnu::always_inline]] int32_t getSmoothedPatchedParamValue(int32_t p, ParamManager& paramManager) const {
@@ -279,22 +278,47 @@ public:
 	void notifyValueChangeViaLPF(int32_t p, bool shouldDoParamLPF, ModelStackWithThreeMainThings const* modelStack,
 	                             int32_t oldValue, int32_t newValue, bool fromAutomation);
 	void deleteMultiRange(int32_t s, int32_t r);
-	void prepareForHibernation();
 	void wontBeRenderedForAWhile() override;
-	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob* knob, ModelStackWithThreeMainThings* modelStack) final;
+	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
 	virtual ArpeggiatorBase* getArp() = 0;
 	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
 
-	inline void saturate(int32_t* data, uint32_t* workingValue) {
+	[[gnu::always_inline]] void saturate(int32_t* data, uint32_t* workingValue) {
 		// Clipping
-		if (clippingAmount) {
+		if (clippingAmount != 0u) {
 			int32_t shiftAmount = (clippingAmount >= 2) ? (clippingAmount - 2) : 0;
 			//*data = getTanHUnknown(*data, 5 + clippingAmount) << (shiftAmount);
 			*data = getTanHAntialiased(*data, workingValue, 5 + clippingAmount) << (shiftAmount);
 		}
 	}
-	int32_t numVoicesAssigned;
 	uint32_t getSyncedLFOPhaseIncrement(const LFOConfig& config);
+
+	/// @brief Does this sound have any active voices?
+	[[nodiscard]] bool hasActiveVoices() const override { return !voices_.empty(); }
+
+	/// @brief Get the number of active voices
+	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
+
+	/// @brief Immediately ends all active voices
+	void killAllVoices() override;
+
+	/// @brief Get the voice with the lowest priority
+	/// @return The voice with the lowest priority
+	[[nodiscard]] const ActiveVoice& getLowestPriorityVoice() const;
+
+	/// @brief Get the voices for this sound
+	[[nodiscard]] const deluge::fast_vector<ActiveVoice>& voices() const { return voices_; }
+
+	/// @brief Releases a given voice from the Sound
+	/// @param voice The voice to release
+	/// @param modelStack The model stack to use for the release
+	/// @param erase Whether to erase the voice from the list of active voices (default: true)
+	void freeActiveVoice(const ActiveVoice& voice, ModelStackWithSoundFlags* modelStack = nullptr, bool erase = true);
+
+	// Voiced overrides
+	bool anyNoteIsOn() override;
+	bool allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop = false) override;
+	void prepareForHibernation() override;
 
 private:
 	uint32_t getGlobalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Global param);
@@ -302,7 +326,7 @@ private:
 	void setupUnisonDetuners(ModelStackWithSoundFlags* modelStack);
 	void setupUnisonStereoSpread();
 	void calculateEffectiveVolume();
-	void ensureKnobReferencesCorrectVolume(Knob* knob);
+	void ensureKnobReferencesCorrectVolume(Knob& knob);
 	Error readTagFromFileOrError(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
 	                             int32_t readAutomationUpToPos, ArpeggiatorSettings* arpSettings, Song* song);
 
@@ -320,4 +344,28 @@ private:
 	ModelStackWithAutoParam* getParamFromModEncoderDeeper(int32_t whichModEncoder,
 	                                                      ModelStackWithThreeMainThings* modelStack,
 	                                                      bool allowCreation = true);
+
+	/// @brief the list of active voices for this sound
+	// O(n) lookup is fine when most of the time we're iterating over all voices anyways.
+	// Went with a vector instead of a list so that we don't need to always allocate if
+	// we're constantly cycling between a minimum and maximum number of voices.
+	deluge::fast_vector<ActiveVoice> voices_;
+
+	/// @brief Acquire a voice for use by a note
+	/// Internally this will either acquire a new voice or steal an existing one
+	/// @return The acquired voice
+	const ActiveVoice& acquireVoice() noexcept(false); // throws an exception if no memory is available
+
+	/// @brief Check if a voice exists in the list of active voices
+	void checkVoiceExists(const ActiveVoice& voice, const char* error) const;
+
+	/// @brief Steals a currently-in-use voice for use by another note
+	/// @return The stolen voice
+	const ActiveVoice& stealOneActiveVoice();
+
+	/// @brief Force a voice to release very quickly - will be almost instant but click-free
+	void terminateOneActiveVoice();
+
+	/// @brief Force a voice to release, or speed up its release if it's already releasing
+	void forceReleaseOneActiveVoice();
 };

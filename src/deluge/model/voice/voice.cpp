@@ -82,23 +82,23 @@ int32_t Voice::combineExpressionValues(const Sound& sound, int32_t expressionDim
 	return lshiftAndSaturate<1>(combinedValue);
 }
 
-Voice::Voice() : patcher(kPatcherConfigForVoice, sourceValues, paramFinalValues) {
+Voice::Voice(Sound& sound) : patcher(kPatcherConfigForVoice, sourceValues, paramFinalValues), sound{sound} {
 }
 
 // Unusually, modelStack may be supplied as NULL, because when unassigning all voices e.g. on song swap, we won't have
 // it. You'll normally want to call audioDriver.voiceUnassigned() after this.
-void Voice::setAsUnassigned(ModelStackWithVoice* modelStack, bool deletingSong) {
+void Voice::setAsUnassigned(ModelStackWithSoundFlags* modelStack, bool deletingSong) {
 
 	unassignStuff(deletingSong);
 
 	if (!deletingSong) {
-		this->assignedToSound->voiceUnassigned(modelStack);
+		this->sound.voiceUnassigned(modelStack);
 	}
 }
 
 void Voice::unassignStuff(bool deletingSong) {
 	for (int32_t s = 0; s < kNumSources; s++) {
-		for (int32_t u = 0; u < this->assignedToSound->numUnison; u++) {
+		for (int32_t u = 0; u < this->sound.numUnison; u++) {
 			unisonParts[u].sources[s].unassign(deletingSong);
 		}
 	}
@@ -107,7 +107,7 @@ void Voice::unassignStuff(bool deletingSong) {
 uint32_t lastSoundOrder = 0;
 
 // Returns false if fail and we need to unassign again
-bool Voice::noteOn(ModelStackWithVoice* modelStack, int32_t newNoteCodeBeforeArpeggiation,
+bool Voice::noteOn(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBeforeArpeggiation,
                    int32_t newNoteCodeAfterArpeggiation, uint8_t velocity, uint32_t newSampleSyncLength,
                    int32_t ticksLate, uint32_t samplesLate, bool resetEnvelopes, int32_t newFromMIDIChannel,
                    const int16_t* mpeValues) {
@@ -168,8 +168,8 @@ bool Voice::noteOn(ModelStackWithVoice* modelStack, int32_t newNoteCodeBeforeArp
 	}
 
 	if (resetEnvelopes) {
-		memset(sourceAmplitudesLastTime, 0, sizeof(sourceAmplitudesLastTime));
-		memset(modulatorAmplitudeLastTime, 0, sizeof(modulatorAmplitudeLastTime));
+		sourceAmplitudesLastTime.fill(0);
+		modulatorAmplitudeLastTime.fill(0);
 		overallOscAmplitudeLastTime = 0;
 		doneFirstRender = false;
 
@@ -351,7 +351,7 @@ void Voice::expressionEventSmooth(int32_t newValue, int32_t s) {
 	expressionSourcesCurrentlySmoothing[expressionDimension] = true;
 }
 
-void Voice::changeNoteCode(ModelStackWithVoice* modelStack, int32_t newNoteCodeBeforeArpeggiation,
+void Voice::changeNoteCode(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBeforeArpeggiation,
                            int32_t newNoteCodeAfterArpeggiation, int32_t newInputMIDIChannel,
                            const int16_t* newMPEValues) {
 	inputCharacteristics[util::to_underlying(MIDICharacteristic::NOTE)] = newNoteCodeBeforeArpeggiation;
@@ -411,7 +411,7 @@ void Voice::randomizeOscPhases(const Sound& sound) {
 }
 
 // Can accept NULL paramManager
-void Voice::calculatePhaseIncrements(ModelStackWithVoice* modelStack) {
+void Voice::calculatePhaseIncrements(ModelStackWithSoundFlags* modelStack) {
 
 	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
 	Sound& sound = *static_cast<Sound*>(modelStack->modControllable);
@@ -567,7 +567,7 @@ makeInactive: // Frequency too high to render! (Higher than 22.05kHz)
 	}
 }
 
-void Voice::noteOff(ModelStackWithVoice* modelStack, bool allowReleaseStage) {
+void Voice::noteOff(ModelStackWithSoundFlags* modelStack, bool allowReleaseStage) {
 
 	for (int32_t s = 0; s < kNumSources; s++) {
 		guides[s].noteOffReceived = true;
@@ -633,7 +633,7 @@ void Voice::noteOff(ModelStackWithVoice* modelStack, bool allowReleaseStage) {
 }
 
 // Returns false if voice needs unassigning now
-bool Voice::sampleZoneChanged(ModelStackWithVoice* modelStack, int32_t s, MarkerType markerType) {
+bool Voice::sampleZoneChanged(ModelStackWithSoundFlags* modelStack, int32_t s, MarkerType markerType) {
 
 	AudioFileHolder* holder = guides[s].audioFileHolder;
 	if (!holder) {
@@ -697,19 +697,17 @@ bool Voice::sampleZoneChanged(ModelStackWithVoice* modelStack, int32_t s, Marker
 }
 
 uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Local param) {
-	LFOConfig& config = assignedToSound->lfoConfig[lfoId];
+	LFOConfig& config = sound.lfoConfig[lfoId];
 	if (config.syncLevel == SYNC_LEVEL_NONE) {
 		return paramFinalValues[param];
 	}
-	else {
-		return assignedToSound->getSyncedLFOPhaseIncrement(config);
-	}
+	return sound.getSyncedLFOPhaseIncrement(config);
 }
 
 // Before calling this, you must set the filterSetConfig's doLPF and doHPF to default values
 
 // Returns false if became inactive and needs unassigning
-[[gnu::hot]] bool Voice::render(ModelStackWithVoice* modelStack, int32_t* soundBuffer, int32_t numSamples,
+[[gnu::hot]] bool Voice::render(ModelStackWithSoundFlags* modelStack, int32_t* soundBuffer, int32_t numSamples,
                                 bool soundRenderingInStereo, bool applyingPanAtVoiceLevel, uint32_t sourcesChanged,
                                 bool doLPF, bool doHPF, int32_t externalPitchAdjust) {
 	// we spread out over a render cycle - allocating and starting the voice takes more time than rendering it so this
@@ -841,8 +839,7 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
 	// Porta
 	if (portaEnvelopePos < 8388608) {
 		int32_t envValue = getDecay4(portaEnvelopePos, 23);
-		int32_t pitchAdjustmentHere =
-		    kMaxSampleValue + (multiply_32x32_rshift32_rounded(envValue, portaEnvelopeMaxAmplitude) << 1);
+		int32_t pitchAdjustmentHere = kMaxSampleValue + (q31_mult_rounded(envValue, portaEnvelopeMaxAmplitude));
 
 		int32_t a = multiply_32x32_rshift32_rounded(overallPitchAdjust, pitchAdjustmentHere);
 		if (a > 8388607) {
@@ -1496,13 +1493,13 @@ skipUnisonPart: {}
 	}
 
 	if (didStereoTempBuffer) {
-		int32_t* const oscBufferEnd = oscBuffer + (numSamples << 1);
+		std::span stereo_osc_buffer{reinterpret_cast<StereoSample*>(oscBuffer), static_cast<size_t>(numSamples)};
 		// fold
 		if (paramFinalValues[params::LOCAL_FOLD] > 0) {
-			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, paramFinalValues[params::LOCAL_FOLD]);
+			dsp::foldBufferPolyApproximation(stereo_osc_buffer, paramFinalValues[params::LOCAL_FOLD]);
 		}
 		// Filters
-		filterSet.renderLongStereo(oscBuffer, oscBufferEnd);
+		filterSet.renderLongStereo(stereo_osc_buffer);
 
 		// No clipping
 		if (!sound.clippingAmount) {
@@ -1517,8 +1514,8 @@ skipUnisonPart: {}
 
 				overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
 				if (synthMode != SynthMode::FM) {
-					outputSampleL = multiply_32x32_rshift32_rounded(outputSampleL, overallOscAmplitudeNow) << 1;
-					outputSampleR = multiply_32x32_rshift32_rounded(outputSampleR, overallOscAmplitudeNow) << 1;
+					outputSampleL = q31_mult_rounded(outputSampleL, overallOscAmplitudeNow);
+					outputSampleR = q31_mult_rounded(outputSampleR, overallOscAmplitudeNow);
 				}
 
 				// Write to the output buffer, panning or not
@@ -1546,8 +1543,8 @@ skipUnisonPart: {}
 
 				overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
 				if (synthMode != SynthMode::FM) {
-					outputSampleL = multiply_32x32_rshift32_rounded(outputSampleL, overallOscAmplitudeNow) << 1;
-					outputSampleR = multiply_32x32_rshift32_rounded(outputSampleR, overallOscAmplitudeNow) << 1;
+					outputSampleL = q31_mult_rounded(outputSampleL, overallOscAmplitudeNow);
+					outputSampleR = q31_mult_rounded(outputSampleR, overallOscAmplitudeNow);
 				}
 
 				sound.saturate(&outputSampleL, &lastSaturationTanHWorkingValue[0]);
@@ -1577,15 +1574,17 @@ skipUnisonPart: {}
 		oscBufferPos = oscBuffer;
 		*/
 
-		int32_t* const oscBufferEnd = oscBuffer + numSamples;
+		// cast to unsigned to avoid narrowing-warnings from span{} below.
+		auto n = static_cast<uint32_t>(numSamples);
+
 		// wavefolding pre filter
 		if (paramFinalValues[params::LOCAL_FOLD] > 0) {
 			q31_t foldAmount = paramFinalValues[params::LOCAL_FOLD];
 
-			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, foldAmount);
+			dsp::foldBufferPolyApproximation(std::span{oscBuffer, n}, foldAmount);
 		}
 
-		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples);
+		filterSet.renderLong(std::span{oscBuffer, n});
 
 		// No clipping
 		if (!sound.clippingAmount) {
@@ -1598,7 +1597,7 @@ skipUnisonPart: {}
 
 				if (synthMode != SynthMode::FM) {
 					overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
-					output = multiply_32x32_rshift32_rounded(output, overallOscAmplitudeNow) << 1;
+					output = q31_mult_rounded(output, overallOscAmplitudeNow);
 				}
 
 				if (soundRenderingInStereo) {
@@ -1628,7 +1627,7 @@ skipUnisonPart: {}
 
 				if (synthMode != SynthMode::FM) {
 					overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
-					output = multiply_32x32_rshift32_rounded(output, overallOscAmplitudeNow) << 1;
+					output = q31_mult_rounded(output, overallOscAmplitudeNow);
 				}
 
 				sound.saturate(&output, &lastSaturationTanHWorkingValue[0]);
@@ -1664,7 +1663,7 @@ renderingDone:
 	return !unassignVoiceAfter;
 }
 
-bool Voice::areAllUnisonPartsInactive(ModelStackWithVoice& modelStack) const {
+bool Voice::areAllUnisonPartsInactive(ModelStackWithSoundFlags& modelStack) const {
 	// If no noise-source, then it might be time to unassign the voice...
 	if (!modelStack.paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(
 	        -2147483648)) {
@@ -2496,9 +2495,7 @@ bool Voice::doImmediateRelease() {
 	}
 
 	// Or if first render not done yet, we actually don't want to hear anything at all, so just unassign it
-	else {
-		return false;
-	}
+	return false;
 }
 
 bool Voice::hasReleaseStage() {
@@ -2510,16 +2507,16 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
 static_assert(kNumVoicePriorities < 4, "Too many priority options");
 
 // Higher numbers are lower priority. 1 is top priority. Will never return 0, because nextVoiceState starts at 1
-uint32_t Voice::getPriorityRating() {
+uint32_t Voice::getPriorityRating() const {
 	return
 	    // Bits 30-31 - manual priority setting
-	    ((uint32_t)(3 - util::to_underlying(assignedToSound->voicePriority)) << 30)
+	    ((uint32_t)(3 - util::to_underlying(sound.voicePriority)) << 30)
 
 	    // Bits 27-29 - how many voices that Sound has
 	    // - that one really does need to go above state, otherwise "once" samples can still cut out synth drones.
 	    // In a perfect world, culling for the purpose of "soliciting" a Voice would also count the new Voice being
 	    // solicited, preferring to cut out that same Sound's old, say, one Voice, than another Sound's only Voice
-	    + ((uint32_t)std::min(assignedToSound->numVoicesAssigned, 7_i32) << 27)
+	    + ((uint32_t)std::min<size_t>(sound.numActiveVoices(), 7) << 27)
 
 	    // Bits 24-26 - envelope state
 	    + ((uint32_t)envelopes[0].state << 24)

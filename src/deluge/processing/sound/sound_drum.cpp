@@ -26,28 +26,10 @@
 #include "model/instrument/kit.h"
 #include "model/song/song.h"
 #include "model/voice/voice.h"
-#include "model/voice/voice_vector.h"
 #include "processing/engines/audio_engine.h"
 #include "storage/storage_manager.h"
 #include "util/misc.h"
 #include <new>
-
-SoundDrum::SoundDrum() : Drum(DrumType::SOUND) {
-	nameIsDiscardable = false;
-}
-
-/*
-// Started but didn't finish this - it's hard!
-Drum* SoundDrum::clone() {
-    void* drumMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(SoundDrum));
-    if (!drumMemory) return NULL;
-    SoundDrum* newDrum = new (drumMemory) SoundDrum();
-
-
-
-    return newDrum;
-}
-*/
 
 bool SoundDrum::readTagFromFile(Deserializer& reader, char const* tagName) {
 	if (!strcmp(tagName, "name")) {
@@ -67,40 +49,25 @@ bool SoundDrum::readTagFromFile(Deserializer& reader, char const* tagName) {
 	return true;
 }
 
-bool SoundDrum::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
-	return Sound::allowNoteTails(modelStack, disregardSampleLoop);
-}
-
-bool SoundDrum::anyNoteIsOn() {
-	return Sound::anyNoteIsOn();
-}
-
-bool SoundDrum::hasAnyVoices() {
-	return Sound::hasAnyVoices(false);
-}
-
 void SoundDrum::resetTimeEnteredState() {
-
 	// the sound drum might have multiple voices sounding, but only one will be sustaining and switched to hold
-	int32_t ends[2];
-	AudioEngine::activeVoices.getRangeForSound(this, ends);
-	for (int32_t v = ends[0]; v < ends[1]; v++) {
-		Voice* thisVoice = AudioEngine::activeVoices.getVoice(v);
-		thisVoice->envelopes[0].resetTimeEntered();
+	for (const ActiveVoice& voice : this->voices()) {
+		voice->envelopes[0].resetTimeEntered();
 	}
 }
 
-void SoundDrum::noteOn(ModelStackWithThreeMainThings* modelStack, uint8_t velocity, Kit* kit, int16_t const* mpeValues,
+void SoundDrum::noteOn(ModelStackWithThreeMainThings* modelStack, uint8_t velocity, int16_t const* mpeValues,
                        int32_t fromMIDIChannel, uint32_t sampleSyncLength, int32_t ticksLate, uint32_t samplesLate) {
 
 	// If part of a Kit, and in choke mode, choke other drums
-	if (polyphonic == PolyphonyMode::CHOKE) {
+	if (polyphonic == PolyphonyMode::CHOKE && (kit != nullptr)) {
 		kit->choke();
 	}
 
 	Sound::noteOn(modelStack, &arpeggiator, kNoteForDrum, mpeValues, sampleSyncLength, ticksLate, samplesLate, velocity,
 	              fromMIDIChannel);
 }
+
 void SoundDrum::noteOff(ModelStackWithThreeMainThings* modelStack, int32_t velocity) {
 	Sound::noteOff(modelStack, &arpeggiator, kNoteForDrum);
 }
@@ -108,20 +75,15 @@ void SoundDrum::noteOff(ModelStackWithThreeMainThings* modelStack, int32_t veloc
 extern bool expressionValueChangesMustBeDoneSmoothly;
 
 void SoundDrum::expressionEvent(int32_t newValue, int32_t expressionDimension) {
-
 	int32_t s = expressionDimension + util::to_underlying(PatchSource::X);
 
 	// sourcesChanged |= 1 << s; // We'd ideally not want to apply this to all voices though...
-
-	int32_t ends[2];
-	AudioEngine::activeVoices.getRangeForSound(this, ends);
-	for (int32_t v = ends[0]; v < ends[1]; v++) {
-		Voice* thisVoice = AudioEngine::activeVoices.getVoice(v);
+	for (const ActiveVoice& voice : this->voices()) {
 		if (expressionValueChangesMustBeDoneSmoothly) {
-			thisVoice->expressionEventSmooth(newValue, s);
+			voice->expressionEventSmooth(newValue, s);
 		}
 		else {
-			thisVoice->expressionEventImmediate(*this, newValue, s);
+			voice->expressionEventImmediate(*this, newValue, s);
 		}
 	}
 
@@ -144,8 +106,9 @@ void SoundDrum::polyphonicExpressionEventOnChannelOrNote(int32_t newValue, int32
 	                                                whichCharacteristic);
 }
 
-void SoundDrum::unassignAllVoices() {
-	Sound::unassignAllVoices();
+void SoundDrum::killAllVoices() {
+	Sound::killAllVoices();
+	arpeggiator.reset();
 }
 
 void SoundDrum::setupPatchingForAllParamManagers(Song* song) {
@@ -156,9 +119,6 @@ Error SoundDrum::loadAllSamples(bool mayActuallyReadFiles) {
 	return Sound::loadAllAudioFiles(mayActuallyReadFiles);
 }
 
-void SoundDrum::prepareForHibernation() {
-	Sound::prepareForHibernation();
-}
 void SoundDrum::writeToFileAsInstrument(bool savingSong, ParamManager* paramManager) {
 	Serializer& writer = GetSerializer();
 	writer.writeOpeningTagBeginning("sound", true);
@@ -182,9 +142,6 @@ void SoundDrum::writeToFile(Serializer& writer, bool savingSong, ParamManager* p
 	}
 
 	writer.writeClosingTag("sound", true, true);
-}
-
-void SoundDrum::getName(char* buffer) {
 }
 
 Error SoundDrum::readFromFile(Deserializer& reader, Song* song, Clip* clip, int32_t readAutomationUpToPos) {
@@ -211,7 +168,7 @@ void SoundDrum::choke(ModelStackWithSoundFlags* modelStack) {
 }
 
 void SoundDrum::setSkippingRendering(bool newSkipping) {
-	if (kit && newSkipping != skippingRendering) {
+	if (kit != nullptr && newSkipping != skippingRendering) {
 		if (newSkipping) {
 			kit->drumsWithRenderingActive.deleteAtKey((int32_t)(Drum*)this);
 		}

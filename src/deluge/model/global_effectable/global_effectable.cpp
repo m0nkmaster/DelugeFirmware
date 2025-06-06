@@ -28,6 +28,7 @@
 #include "model/mod_controllable/ModFXProcessor.h"
 #include "model/settings/runtime_feature_settings.h"
 #include "model/song/song.h"
+#include "modulation/params/param.h"
 #include "modulation/params/param_collection.h"
 #include "modulation/params/param_set.h"
 #include "playback/playback_handler.h"
@@ -63,6 +64,10 @@ void GlobalEffectable::initParams(ParamManager* paramManager) {
 
 	UnpatchedParamSet* unpatchedParams = paramManager->getUnpatchedParamSet();
 	unpatchedParams->kind = deluge::modulation::params::Kind::UNPATCHED_GLOBAL;
+
+	// Overwrite default arp Gate to 50 for Kit affect-entire arp
+	unpatchedParams->params[params::UNPATCHED_ARP_GATE].setCurrentValueBasicForSetup(2147483647);
+	unpatchedParams->params[params::UNPATCHED_ARP_RATE].setCurrentValueBasicForSetup(0);
 
 	unpatchedParams->params[params::UNPATCHED_MOD_FX_RATE].setCurrentValueBasicForSetup(-536870912);
 	unpatchedParams->params[params::UNPATCHED_MOD_FX_FEEDBACK].setCurrentValueBasicForSetup(NEGATIVE_ONE_Q31);
@@ -489,7 +494,7 @@ int32_t GlobalEffectable::getKnobPosForNonExistentParam(int32_t whichModEncoder,
 				break;
 
 			case CompParam::BLEND:
-				current = compressor.getBlend() >> 24;
+				current = compressor.getBlend().raw() >> 24;
 				break;
 
 			// explicit fallthrough case
@@ -581,11 +586,12 @@ ActionResult GlobalEffectable::modEncoderActionForNonExistentParam(int32_t offse
 				if (display->haveOLED()) {
 					popupMsg.append(deluge::l10n::get(deluge::l10n::String::STRING_FOR_BLEND));
 				}
-				current = (compressor.getBlend() >> 24) - 64;
+				current = (compressor.getBlend().raw() >> 24) - 64;
 				current += offset;
 				current = std::clamp(current, -64, 64);
 				ledLevel = (64 + current);
-				q31_t level = current == 64 ? ONE_Q31 : lshiftAndSaturate<24>(current + 64);
+				FixedPoint<31> level =
+				    current == 64 ? 1.f : FixedPoint<31>::from_raw(lshiftAndSaturate<24>(current + 64));
 				displayLevel = compressor.setBlend(level);
 				unit = " %";
 				break;
@@ -780,7 +786,7 @@ void GlobalEffectable::setupFilterSetConfig(int32_t* postFXVolume, ParamManager*
 }
 
 [[gnu::hot]] void GlobalEffectable::processFilters(std::span<StereoSample> buffer) {
-	filterSet.renderLongStereo(&buffer.data()->l, &(buffer.data() + buffer.size())->l);
+	filterSet.renderLongStereo(buffer);
 }
 
 void GlobalEffectable::writeAttributesToFile(Serializer& writer, bool writeAutomation) {
@@ -842,6 +848,9 @@ void GlobalEffectable::writeParamAttributesToFile(Serializer& writer, ParamManag
 	                                       valuesForOverride);
 	unpatchedParams->writeParamAsAttribute(writer, "tempo", params::UNPATCHED_TEMPO, writeAutomation, false,
 	                                       valuesForOverride);
+
+	unpatchedParams->writeParamAsAttribute(writer, "arpeggiatorRate", params::UNPATCHED_ARP_RATE, writeAutomation,
+	                                       false, valuesForOverride);
 }
 
 void GlobalEffectable::writeParamTagsToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
@@ -1014,6 +1023,11 @@ bool GlobalEffectable::readParamTagFromFile(Deserializer& reader, char const* ta
 		reader.exitTag("modFXRate");
 	}
 
+	else if (!strcmp(tagName, "arpeggiatorRate")) {
+		unpatchedParams->readParam(reader, unpatchedParamsSummary, params::UNPATCHED_ARP_RATE, readAutomationUpToPos);
+		reader.exitTag("arpeggiatorRate");
+	}
+
 	else if (ModControllableAudio::readParamTagFromFile(reader, tagName, paramManager, readAutomationUpToPos)) {}
 
 	else {
@@ -1026,7 +1040,7 @@ bool GlobalEffectable::readParamTagFromFile(Deserializer& reader, char const* ta
 // paramManager is optional
 Error GlobalEffectable::readTagFromFile(Deserializer& reader, char const* tagName,
                                         ParamManagerForTimeline* paramManager, int32_t readAutomationUpToPos,
-                                        Song* song) {
+                                        ArpeggiatorSettings* arpSettings, Song* song) {
 
 	// This is here for compatibility only for people (Lou and Ian) who saved songs with firmware in September 2016
 	// if (paramManager && strcmp(tagName, "delay") && GlobalEffectable::readParamTagFromFile(tagName, paramManager,
@@ -1063,7 +1077,7 @@ Error GlobalEffectable::readTagFromFile(Deserializer& reader, char const* tagNam
 	}
 
 	else {
-		return ModControllableAudio::readTagFromFile(reader, tagName, NULL, readAutomationUpToPos, song);
+		return ModControllableAudio::readTagFromFile(reader, tagName, NULL, readAutomationUpToPos, arpSettings, song);
 	}
 
 	return Error::NONE;
@@ -1184,19 +1198,19 @@ deluge::vector<std::string_view> getModNames() {
 	};
 }
 
-const char* getParamName(ModFXType type, ModFXParam param) {
+const char* getParamName(ModFXType type, ModFXParam param, bool shortName) {
 	using enum deluge::l10n::String;
 	using namespace deluge;
+
 	switch (type) {
 	case ModFXType::GRAIN: {
 		switch (param) {
-			using enum deluge::l10n::String;
 		case ModFXParam::DEPTH:
-			return l10n::get(STRING_FOR_GRAIN_AMOUNT);
+			return l10n::get(shortName ? STRING_FOR_GRAIN_AMOUNT_SHORT : STRING_FOR_GRAIN_AMOUNT);
 		case ModFXParam::FEEDBACK:
-			return l10n::get(STRING_FOR_GRAIN_RANDOMNESS);
+			return l10n::get(shortName ? STRING_FOR_GRAIN_RANDOMNESS_SHORT : STRING_FOR_GRAIN_RANDOMNESS);
 		case ModFXParam::OFFSET:
-			return l10n::get(STRING_FOR_GRAIN_DENSITY);
+			return l10n::get(shortName ? STRING_FOR_GRAIN_DENSITY_SHORT : STRING_FOR_GRAIN_DENSITY);
 		default:
 			return l10n::get(STRING_FOR_NONE);
 		}
@@ -1204,19 +1218,19 @@ const char* getParamName(ModFXType type, ModFXParam param) {
 
 	default: {
 		switch (param) {
-			using enum deluge::l10n::String;
 		case ModFXParam::DEPTH:
-			return l10n::get(STRING_FOR_DEPTH);
+			return l10n::get(shortName ? STRING_FOR_DEPTH_SHORT : STRING_FOR_DEPTH);
 		case ModFXParam::FEEDBACK:
-			return l10n::get(STRING_FOR_FEEDBACK);
+			return l10n::get(shortName ? STRING_FOR_FEEDBACK_SHORT : STRING_FOR_FEEDBACK);
 		case ModFXParam::OFFSET:
-			return l10n::get(STRING_FOR_OFFSET);
+			return l10n::get(shortName ? STRING_FOR_OFFSET_SHORT : STRING_FOR_OFFSET);
 		default:
 			return l10n::get(STRING_FOR_NONE);
 		}
 	}
 	}
 }
+
 const char* modFXToString(ModFXType type) {
 	switch (type) {
 		using namespace deluge;

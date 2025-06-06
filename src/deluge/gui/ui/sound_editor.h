@@ -45,9 +45,11 @@ class ModControllableAudio;
 class ModelStackWithThreeMainThings;
 class AudioFileHolder;
 class MIDICable;
+
 namespace deluge::gui::menu_item {
+class Submenu;
 enum class RangeEdit : uint8_t;
-}
+} // namespace deluge::gui::menu_item
 
 class SoundEditor final : public UI {
 public:
@@ -57,6 +59,7 @@ public:
 	void displayOrLanguageChanged() final;
 	bool getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) override;
 	Sound* currentSound;
+	bool allowsNoteTails;
 	ModControllableAudio* currentModControllable;
 	int8_t currentSourceIndex;
 	Source* currentSource;
@@ -78,10 +81,12 @@ public:
 	ActionResult horizontalEncoderAction(int32_t offset) override;
 	void scrollFinished() override;
 	bool editingKit();
+	bool editingKitAffectEntire();
+	bool editingKitRow();
 
 	ActionResult timerCallback() override;
-	void setupShortcutBlink(int32_t x, int32_t y, int32_t frequency);
-	bool findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout);
+	void setupShortcutBlink(int32_t x, int32_t y, int32_t frequency, int32_t colour = 0L);
+	bool findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout, bool* isSecondLayerParamOut);
 	void updateSourceBlinks(MenuItem* currentItem);
 	void resetSourceBlinks();
 
@@ -89,6 +94,7 @@ public:
 	uint8_t patchingParamSelected;
 	uint8_t currentParamShorcutX;
 	uint8_t currentParamShorcutY;
+	uint8_t currentParamColour;
 	uint8_t paramShortcutBlinkFrequency;
 	uint32_t shortcutBlinkCounter;
 
@@ -103,13 +109,16 @@ public:
 	MenuItem* menuItemNavigationRecord[16];
 
 	bool shouldGoUpOneLevelOnBegin;
+	bool secondLayerShortcutsToggled;
+	bool secondLayerModSourceShortcutsToggled;
 
 	bool programChangeReceived(MIDICable& cable, uint8_t channel, uint8_t program) { return false; }
 	bool midiCCReceived(MIDICable& cable, uint8_t channel, uint8_t ccNumber, uint8_t value);
 	bool pitchBendReceived(MIDICable& cable, uint8_t channel, uint8_t data1, uint8_t data2);
 	void selectEncoderAction(int8_t offset) override;
 	bool canSeeViewUnderneath() override { return true; }
-	bool setup(Clip* clip = nullptr, const MenuItem* item = nullptr, int32_t sourceIndex = 0);
+	bool setup(Clip* clip = nullptr, const MenuItem* item = nullptr, deluge::gui::menu_item::Submenu* parent = nullptr,
+	           int32_t sourceIndex = 0);
 	void enterOrUpdateSoundEditor(bool on);
 	void blinkShortcut();
 	ActionResult potentialShortcutPadAction(int32_t x, int32_t y, bool on);
@@ -162,13 +171,13 @@ private:
 	void setupShortcutsBlinkFromTable(MenuItem const* currentItem,
 	                                  MenuItem const* const items[kDisplayWidth][kDisplayHeight]);
 	bool beginScreen(MenuItem* oldMenuItem = nullptr);
+	void endScreen();
 	uint8_t getActualParamFromScreen(uint8_t screen);
 	void setLedStates();
 	ActionResult handleAutomationViewPadAction(int32_t x, int32_t y, int32_t velocity);
 	bool isEditingAutomationViewParam();
 	void handlePotentialParamMenuChange(deluge::hid::Button b, bool on, bool inCardRoutine, MenuItem* previousItem,
 	                                    MenuItem* currentItem);
-	bool handleClipName();
 
 	uint8_t sourceShortcutBlinkFrequencies[2][kDisplayHeight];
 	uint8_t sourceShortcutBlinkColours[2][kDisplayHeight];

@@ -24,6 +24,7 @@
 #include "model/mod_controllable/mod_controllable.h"
 #include "modulation/lfo.h"
 #include "playback/playback_handler.h"
+#include "processing/engines/audio_engine.h"
 
 void GranularProcessor::setWrapsToShutdown() {
 
@@ -68,8 +69,8 @@ void GranularProcessor::processGrainFX(std::span<StereoSample> buffer, int32_t g
 			wetr = lpf_r.doFilter(wetr, 1 << 29);
 
 			// WET and DRY Vol
-			sample.l = add_saturation(q31_mult(sample.l, _grainDryVol), wetl);
-			sample.r = add_saturation(q31_mult(sample.r, _grainDryVol), wetr);
+			sample.l = add_saturate(q31_mult(sample.l, _grainDryVol), wetl);
+			sample.r = add_saturate(q31_mult(sample.r, _grainDryVol), wetr);
 
 			// adding a small amount of extra reverb covers a lot of the granular artifacts
 			AudioEngine::feedReverbBackdoorForGrain(i, q31_mult((wetl + wetr), reverbAmount));
@@ -89,8 +90,8 @@ void GranularProcessor::setupGrainFX(int32_t grainRate, int32_t grainMix, int32_
 	if (!grainInitialized && bufferWriteIndex >= 65536) {
 		grainInitialized = true;
 	}
-	*postFXVolume = multiply_32x32_rshift32(*postFXVolume, ONE_OVER_SQRT2_Q31) << 1; // Divide by sqrt(2)
-	                                                                                 // Shift
+	*postFXVolume = q31_mult(*postFXVolume, ONE_OVER_SQRT2_Q31); // Divide by sqrt(2)
+	                                                             // Shift
 	_grainShift =
 	    44 * 300; // this is where we should tempo sync ( it's kSampleRate / 1000 * 300 for a 300ms base delay amount);
 	// Size depends on both density and rate
@@ -283,24 +284,7 @@ void GranularProcessor::clearGrainFXBuffer() {
 	bufferWriteIndex = 0;
 	getBuffer();
 }
-GranularProcessor::GranularProcessor() {
-	wrapsToShutdown = 0;
-	bufferWriteIndex = 0;
-	_grainShift = 13230; // 300ms
-	_grainSize = 13230;  // 300ms
-	_grainRate = 1260;   // 35hz
-	_grainFeedbackVol = 161061273;
-	for (auto& grain : grains) {
-		grain.length = 0;
-	}
-	_grainVol = 0;
-	_grainDryVol = 2147483647;
-	_pitchRandomness = 0;
-	grainLastTickCountIsZero = true;
-	grainInitialized = false;
-	grainBuffer = nullptr;
-	getBuffer();
-}
+
 void GranularProcessor::getBuffer() {
 	if (grainBuffer == nullptr) {
 		void* grainBufferMemory = GeneralMemoryAllocator::get().allocStealable(sizeof(GrainBuffer));
@@ -316,28 +300,21 @@ void GranularProcessor::getBuffer() {
 	    false; // "clear" the buffer by stopping grains from being generated until it's refilled with fresh data
 	bufferWriteIndex = 0;
 }
+
 GranularProcessor::~GranularProcessor() {
 	delete grainBuffer;
 }
-GranularProcessor::GranularProcessor(const GranularProcessor& other) {
-	wrapsToShutdown = other.wrapsToShutdown;
-	bufferWriteIndex = other.bufferWriteIndex;
-	_grainShift = other._grainShift; // 300ms
-	_grainSize = other._grainSize;   // 300ms
-	_grainRate = other._grainRate;   // 35hz
-	_grainFeedbackVol = other._grainFeedbackVol;
-	for (int i = 0; i < 8; i++) {
-		GranularProcessor::grains[i].length = 0;
-	}
-	_grainVol = other._grainVol;
-	_grainDryVol = other._grainDryVol;
-	_pitchRandomness = other._pitchRandomness;
-	grainLastTickCountIsZero = true;
-	grainInitialized = false;
+
+GranularProcessor::GranularProcessor(const GranularProcessor& other)
+    : bufferWriteIndex(other.bufferWriteIndex), _grainSize(other._grainSize), _grainRate(other._grainRate),
+      _grainShift(other._grainShift), _grainFeedbackVol(other._grainFeedbackVol),
+      wrapsToShutdown(other.wrapsToShutdown), _grainVol(other._grainVol), _grainDryVol(other._grainDryVol),
+      _pitchRandomness(other._pitchRandomness), grains{} {
 	getBuffer();
 }
+
 void GranularProcessor::startSkippingRendering() {
-	if (grainBuffer) {
+	if (grainBuffer != nullptr) {
 		grainBuffer->inUse = false;
 	}
 }

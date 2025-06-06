@@ -51,6 +51,24 @@ public:
 			Integer::drawPixelsForOled();
 		}
 	}
+
+	void renderInHorizontalMenu(int32_t startX, int32_t width, int32_t startY, int32_t height) override {
+		deluge::hid::display::oled_canvas::Canvas& canvas = deluge::hid::display::OLED::main;
+		if (this->getValue() < 0) {
+			renderColumnLabel(startX, width, startY);
+
+			const char* stringForAuto = l10n::get(l10n::String::STRING_FOR_AUTO);
+			canvas.drawStringCentered(stringForAuto, startX, startY + kTextSpacingY + 4, kTextSpacingX, kTextSpacingY,
+			                          width);
+		}
+		else {
+			Integer::renderInHorizontalMenu(startX, width, startY, height);
+		}
+	}
+
+	void getColumnLabel(StringBuf& label) override {
+		label.append(deluge::l10n::get(deluge::l10n::String::STRING_FOR_VOLUME_DUCKING_SHORT));
+	}
 };
 
 } // namespace deluge::gui::menu_item::reverb::sidechain

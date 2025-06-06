@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2023 Synthstrom Audible Limited
+ * Copyright (c) 2024 Sean Ditny
  *
  * This file is part of The Synthstrom Audible Deluge Firmware.
  *
@@ -68,6 +68,8 @@ bool LoadMidiDeviceDefinitionUI::opened() {
 	return true;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstack-usage="
 // If OLED, then you should make sure renderUIsForOLED() gets called after this.
 Error LoadMidiDeviceDefinitionUI::setupForLoadingMidiDeviceDefinition() {
 	// reset
@@ -135,6 +137,7 @@ Error LoadMidiDeviceDefinitionUI::setupForLoadingMidiDeviceDefinition() {
 
 	return Error::NONE;
 }
+#pragma GCC diagnostic pop
 
 void LoadMidiDeviceDefinitionUI::folderContentsReady(int32_t entryDirection) {
 }

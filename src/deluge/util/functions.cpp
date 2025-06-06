@@ -933,6 +933,8 @@ char const* fxTypeToString(ModFXType fxType) {
 		return "flanger";
 	case ModFXType::WARBLE:
 		return "TapeWarble";
+	case ModFXType::DIMENSION:
+		return "dimension";
 
 	case ModFXType::CHORUS:
 		return "chorus";
@@ -956,6 +958,9 @@ ModFXType stringToFXType(char const* string) {
 	}
 	else if (!strcmp(string, "TapeWarble")) {
 		return ModFXType::WARBLE;
+	}
+	else if (!strcmp(string, "dimension")) {
+		return ModFXType::DIMENSION;
 	}
 	else if (!strcmp(string, "chorus")) {
 		return ModFXType::CHORUS;
@@ -1375,12 +1380,12 @@ bool isAudioFilename(char const* filename) {
 	if (filename[0] == '.') {
 		return false;
 	}
-	char* dotPos = strrchr(filename, '.');
+	auto* dotPos = strrchr(filename, '.');
 	return (!strcasecmp(dotPos, ".WAV") || !strcasecmp(dotPos, ".AIF") || !strcasecmp(dotPos, ".AIFF"));
 }
 
 bool isAiffFilename(char const* filename) {
-	char* dotPos = strrchr(filename, '.');
+	auto* dotPos = strrchr(filename, '.');
 	return (dotPos != NULL && (!strcasecmp(dotPos, ".AIF") || !strcasecmp(dotPos, ".AIFF")));
 }
 
@@ -1858,7 +1863,7 @@ doNormal:
 
 void replace_char(char* out_str, const char* in_str, char find, char replace) {
 	strcpy(out_str, in_str);
-	char* current_pos = strchr(out_str, find);
+	auto* current_pos = strchr(out_str, find);
 	while (current_pos) {
 		*current_pos = replace;
 		current_pos = strchr(current_pos, find);
@@ -2082,7 +2087,9 @@ void getNoteLengthNameFromMagnitude(StringBuf& noteLengthBuf, int32_t magnitude,
 			// for "rd")
 			char const* suffix = ((division % 10) == 2) ? "nd" : "th";
 			noteLengthBuf.append(suffix);
-			noteLengthBuf.append(notesString);
+			if (notesString != nullptr) {
+				noteLengthBuf.append(notesString);
+			}
 		}
 		else {
 			uint32_t numBars = (uint32_t)1 << magnitude;
@@ -2142,13 +2149,18 @@ char const* getFileNameFromEndOfPath(char const* filePathChars) {
 	return slashPos ? (slashPos + 1) : filePathChars;
 }
 
+char const* getPathFromFullPath(const char* fullPath) {
+	const char* slashPos = strrchr(fullPath, '/');
+	return slashPos ? std::string(fullPath, slashPos).c_str() : "";
+}
+
 bool doesFilenameFitPrefixFormat(char const* fileName, char const* filePrefix, int32_t prefixLength) {
 
 	if (memcasecmp(fileName, filePrefix, prefixLength)) {
 		return false;
 	}
 
-	char* dotAddress = strrchr(fileName, '.');
+	auto* dotAddress = strrchr(fileName, '.');
 	if (!dotAddress) {
 		return false;
 	}

@@ -16,6 +16,7 @@
  */
 
 #include "menu_item.h"
+#include "deluge/model/settings/runtime_feature_settings.h"
 #include "gui/ui/sound_editor.h"
 #include "hid/display/display.h"
 #include "hid/display/oled.h" //todo: this probably shouldn't be needed
@@ -82,25 +83,52 @@ void MenuItem::renderInHorizontalMenu(int32_t startX, int32_t width, int32_t sta
 void MenuItem::renderColumnLabel(int32_t startX, int32_t width, int32_t startY) {
 	deluge::hid::display::oled_canvas::Canvas& image = deluge::hid::display::OLED::main;
 
+	const bool useSmallFont = runtimeFeatureSettings.get(RuntimeFeatureSettingType::HorizontalMenusSmallFontForLabels)
+	                          == RuntimeFeatureStateToggle::On;
+
 	DEF_STACK_STRING_BUF(label, kShortStringBufferSize);
-	getColumnLabel(label);
+	useSmallFont ? getColumnLabelForSmallFont(label) : getColumnLabel(label);
+
 	// Remove any spaces
 	label.removeSpaces();
-	int32_t pxLen = image.getStringWidthInPixels(label.c_str(), kTextSpacingY);
+
+	const int32_t textSpacingX = useSmallFont ? kTextSmallSpacingX : kTextSpacingX;
+	const int32_t textSpacingY = useSmallFont ? kTextSmallSizeY : kTextSpacingY;
+	const int32_t topPadding = useSmallFont ? 3 : 1;
+	const int32_t leftPadding = useSmallFont ? 5 : 3;
+
+	int32_t pxLen = image.getStringWidthInPixels(label.c_str(), textSpacingY);
 	// If the name fits as-is, we'll squeeze it in. Otherwise we chop off letters until
 	// we have some padding between columns.
-	if (pxLen >= width) {
+	if (pxLen >= width - 2) {
 		const int32_t padding = 4;
-		while ((pxLen = image.getStringWidthInPixels(label.c_str(), kTextSpacingY)) + padding >= width) {
+		do {
 			label.truncate(label.size() - 1);
-		}
+		} while ((pxLen = image.getStringWidthInPixels(label.c_str(), textSpacingY)) + padding >= width);
 	}
-	deluge::hid::display::OLED::main.drawString(label.c_str(), startX, startY, kTextSpacingX, kTextSpacingY, 0,
-	                                            startX + width - kTextSpacingX);
+
+	if (width <= OLED_MAIN_WIDTH_PIXELS / 4 || width - pxLen < 10) {
+		// the item occupies only one slot or the label long enough, center the label
+		startX = (startX + (width - pxLen) / 2) - 1;
+	}
+	else {
+		// otherwise just add a small left padding
+		startX += leftPadding;
+	}
+
+	deluge::hid::display::OLED::main.drawString(label.c_str(), startX, startY + topPadding, textSpacingX, textSpacingY,
+	                                            0, startX + width - textSpacingX);
 }
 
 void MenuItem::updatePadLights() {
 	soundEditor.updatePadLightsFor(this);
+}
+
+void MenuItem::endSession() {
+	// need to reset current coords for correct work of the second page shortcuts
+	constexpr uint8_t void_ = 255;
+	soundEditor.currentParamShorcutX = void_;
+	soundEditor.currentParamShorcutY = void_;
 }
 
 bool isItemRelevant(MenuItem* item) {

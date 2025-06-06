@@ -17,6 +17,7 @@
 
 #include "dsp/timestretch/time_stretcher.h"
 #include "definitions_cxx.hpp"
+#include "deluge/model/sample/sample_low_level_reader.h"
 #include "io/debug/log.h"
 #include "memory/memory_allocator_interface.h"
 #include "model/sample/sample.h"
@@ -43,12 +44,12 @@ bool TimeStretcher::init(Sample* sample, VoiceSample* voiceSample, SamplePlaybac
 
 	// D_PRINTLN("TimeStretcher::init");
 
-	for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
-		clustersForPercLookahead[l] = nullptr;
+	for (auto& l : clustersForPercLookahead) {
+		l = nullptr;
 	}
 
-	for (int32_t l = 0; l < 2; l++) {
-		percCacheClustersNearby[l] = nullptr;
+	for (auto& l : percCacheClustersNearby) {
+		l = nullptr;
 	}
 
 	playHeadStillActive[PLAY_HEAD_OLDER] = true;
@@ -79,7 +80,7 @@ bool TimeStretcher::init(Sample* sample, VoiceSample* voiceSample, SamplePlaybac
 	else
 #endif
 	{
-		olderPartReader.cloneFrom(voiceSample, fudgingNumSamplesTilLoop); // Steals reasons if fudging
+		olderPartReader = SampleLowLevelReader(*voiceSample, fudgingNumSamplesTilLoop); // Steals reasons if fudging
 		olderHeadReadingFromBuffer = false;
 	}
 
@@ -96,7 +97,7 @@ bool TimeStretcher::init(Sample* sample, VoiceSample* voiceSample, SamplePlaybac
 		int32_t bytesPerSample = sample->byteDepth * sample->numChannels;
 
 		int32_t newBytePos =
-		    guide->getBytePosToStartPlayback(true) - fudgingNumSamplesTilLoop * bytesPerSample * playDirection;
+		    guide->getBytePosToStartPlayback(true) - (fudgingNumSamplesTilLoop * bytesPerSample * playDirection);
 
 		int32_t startByte = sample->audioDataStartPosBytes;
 		if (playDirection != 1) {
@@ -176,10 +177,10 @@ void TimeStretcher::beenUnassigned() {
 }
 
 void TimeStretcher::unassignAllReasonsForPercLookahead() {
-	for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
-		if (clustersForPercLookahead[l]) {
-			audioFileManager.removeReasonFromCluster(*clustersForPercLookahead[l], "E130");
-			clustersForPercLookahead[l] = nullptr;
+	for (auto& l : clustersForPercLookahead) {
+		if (l) {
+			audioFileManager.removeReasonFromCluster(*l, "E130");
+			l = nullptr;
 		}
 	}
 }
@@ -269,19 +270,19 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
 	uint16_t startTime = MTU2.TCNT_0;
 #endif
 
-	int32_t reversed = (playDirection == 1) ? 0 : 1;
-
 	int32_t byteDepth = sample->byteDepth;
 	int32_t bytesPerSample = byteDepth * numChannels;
 
 	int32_t oldHeadBytePos;
-
+	if (byteDepth > 3) {
+		FREEZE_WITH_ERROR("read implausible depth");
+	}
 	// D_PRINTLN("");
 	// D_PRINTLN("hopEnd ------");
 
 	olderHeadReadingFromBuffer = false;
 	oldHeadBytePos = voiceSample->getPlayByteLowLevel(sample, guide, true);
-	olderPartReader.cloneFrom(voiceSample, true); // Steals all reasons from the VoiceSample
+	olderPartReader = SampleLowLevelReader(*voiceSample, true); // Steals all reasons from the VoiceSample
 	playHeadStillActive[PLAY_HEAD_OLDER] = playHeadStillActive[PLAY_HEAD_NEWER];
 	playHeadStillActive[PLAY_HEAD_NEWER] = true;
 	hasLoopedBackIntoPreMargin = false; // Might get set to true below
@@ -488,7 +489,9 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
 			int32_t totalPercussiveness = 0;
 			int32_t bestTotal = 0;
 			int32_t bestPixellatedBeamWidth = 1;
-
+			if (byteDepth > 3) {
+				FREEZE_WITH_ERROR("searching with implausible depth");
+			}
 			for (uint32_t beamWidthNow = minBeamWidth; beamWidthNow < maxBeamWidth;
 			     beamWidthNow += kPercBufferReductionSize) {
 
@@ -590,6 +593,9 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
 		}
 
 		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
+		if ((newHeadBytePos - waveformStartByte) * playDirection < 0) {
+			D_PRINTLN(" going before 0: %i", newHeadBytePos - waveformStartByte);
+		}
 	}
 
 skipPercStuff:
@@ -714,7 +720,7 @@ startSearch:
 				}
 
 				int32_t whichCluster = readByte[i] >> Cluster::size_magnitude;
-				Cluster* cluster = sample->clusters.getElement(whichCluster)->cluster;
+				Cluster* cluster = sample->clusters[whichCluster].cluster;
 				if (!cluster || !cluster->loaded) {
 					goto skipSearch;
 				}
@@ -855,7 +861,7 @@ stopSearch:
 		// The above is supposed to not go back beyond the start of the waveform, but there must be some bug because it
 		// does. Until I fix that, this check ensures we stay within the waveform
 		if ((newHeadBytePos - waveformStartByte) * playDirection < 0) {
-			D_PRINTLN("avoided going before 0: %s", newHeadBytePos - waveformStartByte);
+			D_PRINTLN("avoided going before 0: %i", newHeadBytePos - waveformStartByte);
 			newHeadBytePos = waveformStartByte;
 		}
 	}
@@ -930,7 +936,7 @@ optForDirectReading:
 
 			D_PRINTLN("setupNewPlayHead failed. Sticking with old");
 
-			voiceSample->cloneFrom(&olderPartReader, true); // Steals all reasons back
+			*voiceSample = SampleLowLevelReader(olderPartReader, true); // Steals all reasons back
 			playHeadStillActive[PLAY_HEAD_NEWER] = playHeadStillActive[PLAY_HEAD_OLDER];
 			playHeadStillActive[PLAY_HEAD_OLDER] = false;
 
@@ -1122,7 +1128,7 @@ void TimeStretcher::updateClustersForPercLookahead(Sample* sample, uint32_t sour
 				break; // If no more Clusters
 			}
 			clustersForPercLookahead[l] =
-			    sample->clusters.getElement(nextClusterIndex)->getCluster(sample, nextClusterIndex, CLUSTER_ENQUEUE);
+			    sample->clusters[nextClusterIndex].getCluster(sample, nextClusterIndex, CLUSTER_ENQUEUE);
 			if (!clustersForPercLookahead[l]) {
 				break;
 			}

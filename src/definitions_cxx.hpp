@@ -55,12 +55,6 @@
 
 #define PITCH_DETECT_DEBUG_LEVEL 0
 
-// this is the owning raw pointer annotation used by clang tidy
-namespace gsl {
-template <typename T>
-using owner = T;
-}
-
 constexpr uint8_t kOctaveSize = 12;
 
 struct Cartesian {
@@ -232,10 +226,10 @@ enum class UIType : uint8_t {
 	NONE = 255,
 };
 
-enum class AutomationSubType : uint8_t {
-	ARRANGER,
-	INSTRUMENT,
-	AUDIO,
+// used for determining the active mod controllable context for a UI
+enum class UIModControllableContext : uint8_t {
+	SONG,
+	CLIP,
 	NONE = 255,
 };
 
@@ -508,6 +502,8 @@ enum class Error {
 	SD_CARD_NOT_PRESENT,
 	SD_CARD_NO_FILESYSTEM,
 	INVALID_PATTERN_VERSION,
+	OUT_OF_BUFFER_SPACE,
+	INVALID_SYSEX_FORMAT,
 };
 
 enum class SampleRepeatMode {
@@ -598,6 +594,7 @@ enum class PatchCableAcceptance {
 	ALLOWED,
 	YET_TO_BE_DETERMINED,
 };
+
 enum class OverDubType { Normal, ContinuousLayering };
 
 enum class GlobalMIDICommand {
@@ -640,7 +637,7 @@ enum class MIDITransposeControlMethod : uint8_t {
 };
 constexpr auto kNumMIDITransposeControlMethods = util::to_underlying(MIDITransposeControlMethod::CHORD) + 1;
 
-constexpr int32_t kNumClustersLoadedAhead = 2;
+constexpr size_t kNumClustersLoadedAhead = 2;
 
 enum class InputMonitoringMode : uint8_t {
 	SMART,
@@ -944,6 +941,10 @@ constexpr int32_t kOLEDMenuNumOptionsVisible = (OLED_HEIGHT_CHARS - 1);
 constexpr int32_t kConsoleImageHeight = (OLED_MAIN_HEIGHT_PIXELS);
 constexpr int32_t kConsoleImageNumRows = (OLED_MAIN_HEIGHT_PIXELS >> 3);
 
+// small characters
+constexpr int32_t kTextSmallSpacingX = 4;
+constexpr int32_t kTextSmallSizeY = 5;
+
 // non-title characters
 constexpr int32_t kTextSpacingX = 6; // the width of a character (5 px) + the space after it (1 px)
 constexpr int32_t kTextSpacingY = 9; // the height of a character (7 px) + the space above (1px) and below it (1px)
@@ -1035,6 +1036,13 @@ enum SessionLayoutType : uint8_t {
 	SessionLayoutTypeRows,
 	SessionLayoutTypeGrid,
 	SessionLayoutTypeMaxElement // Keep as boundary
+};
+
+enum FavouritesDefaultLayout : uint8_t {
+	FavouritesDefaultLayoutFavorites,
+	FavouritesDefaultLayoutFavoritesAndBanks,
+	FavouritesDefaultLayoutOff,
+	FavouritesDefaultLayoutMaxElement // Keep as boundary
 };
 
 enum GridDefaultActiveMode : uint8_t {

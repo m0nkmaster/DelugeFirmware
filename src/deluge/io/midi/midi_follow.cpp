@@ -1,5 +1,5 @@
 /*
- * Copyright © 2014-2023 Synthstrom Audible Limited
+ * Copyright (c) 2024 Sean Ditny
  *
  * This file is part of The Synthstrom Audible Deluge Firmware.
  *
@@ -252,6 +252,8 @@ void MidiFollow::initDefaultMappings() {
 	soundParamToCC[params::GLOBAL_LFO_FREQ_2] = 110;
 	ccToSoundParam[111] = params::LOCAL_LFO_LOCAL_FREQ_2;
 	soundParamToCC[params::LOCAL_LFO_LOCAL_FREQ_2] = 111;
+	ccToSoundParam[112] = params::UNPATCHED_START + params::UNPATCHED_ARP_STEP_PROBABILITY;
+	soundParamToCC[params::UNPATCHED_START + params::UNPATCHED_ARP_STEP_PROBABILITY] = 112;
 
 	// GLOBAL PARAMS
 	// NOTE: Here you add the global param, assigning the same CC as its relative sound param
@@ -270,6 +272,8 @@ void MidiFollow::initDefaultMappings() {
 	globalParamToCC[params::UNPATCHED_MOD_FX_OFFSET] = 18;
 	ccToGlobalParam[20] = params::UNPATCHED_STUTTER_RATE;
 	globalParamToCC[params::UNPATCHED_STUTTER_RATE] = 20;
+	ccToGlobalParam[51] = params::UNPATCHED_ARP_RATE;
+	globalParamToCC[params::UNPATCHED_ARP_RATE] = 51;
 	ccToGlobalParam[52] = params::UNPATCHED_DELAY_AMOUNT;
 	globalParamToCC[params::UNPATCHED_DELAY_AMOUNT] = 52;
 	ccToGlobalParam[53] = params::UNPATCHED_DELAY_RATE;
@@ -1074,17 +1078,17 @@ void MidiFollow::writeDefaultMappingsToFile() {
 			intToString(ccNumber, buffer);
 			writer.writeTag(paramNameSound, buffer);
 		}
-
-		writeTag = false;
-		if (globalParamId != PARAM_ID_NONE) {
-			paramNameGlobal =
-			    params::paramNameForFile(params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_START + globalParamId);
-			writeTag = strcmp(paramNameGlobal, paramNameSound) != 0;
-		}
-		if (writeTag) {
-			char buffer[10];
-			intToString(ccNumber, buffer);
-			writer.writeTag(paramNameGlobal, buffer);
+		else {
+			if (globalParamId != PARAM_ID_NONE) {
+				paramNameGlobal =
+				    params::paramNameForFile(params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_START + globalParamId);
+				writeTag = strcmp(paramNameGlobal, paramNameSound) != 0;
+			}
+			if (writeTag) {
+				char buffer[10];
+				intToString(ccNumber, buffer);
+				writer.writeTag(paramNameGlobal, buffer);
+			}
 		}
 	}
 }

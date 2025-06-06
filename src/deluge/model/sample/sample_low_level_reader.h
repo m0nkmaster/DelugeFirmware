@@ -36,7 +36,11 @@ class SamplePlaybackGuide;
 class SampleLowLevelReader {
 public:
 	SampleLowLevelReader() = default;
-	~SampleLowLevelReader() = default;
+	virtual ~SampleLowLevelReader() { unassignAllReasons(false); };
+	explicit SampleLowLevelReader(SampleLowLevelReader&, bool stealReasons = false);
+	SampleLowLevelReader(SampleLowLevelReader&& other) noexcept;
+	SampleLowLevelReader& operator=(const SampleLowLevelReader& other) = delete;
+	SampleLowLevelReader& operator=(SampleLowLevelReader&& other) noexcept;
 
 	void unassignAllReasons(bool wontBeUsedAgain);
 	void jumpForwardLinear(int32_t numChannels, int32_t byteDepth, uint32_t bitMask, int32_t jumpAmount,
@@ -61,11 +65,11 @@ public:
 	bool reassessReassessmentLocation(SamplePlaybackGuide* guide, Sample* sample, int32_t priorityRating);
 	int32_t getPlayByteLowLevel(Sample* sample, SamplePlaybackGuide* guide,
 	                            bool compensateForInterpolationBuffer = false);
-	void cloneFrom(SampleLowLevelReader* other, bool stealReasons = false);
+
 	bool setupClustersForPlayFromByte(SamplePlaybackGuide* guide, Sample* sample, int32_t startPlaybackAtByte,
 	                                  int32_t priorityRating);
 
-	virtual bool shouldObeyMarkers() { return false; }
+	[[nodiscard]] virtual bool shouldObeyMarkers() const { return false; }
 
 	void readSamplesNative(int32_t** __restrict__ oscBufferPos, int32_t numSamplesTotal, Sample* sample,
 	                       int32_t jumpAmount, int32_t numChannels, int32_t numChannelsAfterCondensing,
@@ -85,18 +89,19 @@ public:
 	                                  bool loopingAtLowLevel, int32_t jumpAmount, int32_t bufferSize,
 	                                  TimeStretcher* timeStretcher, bool bufferingToTimeStretcher,
 	                                  int32_t whichPlayHead, int32_t whichKernel, int32_t priorityRating);
+	void steal_clusters(SampleLowLevelReader& other, bool stealReasons);
 
 	void bufferIndividualSampleForInterpolation(int32_t numChannels, int32_t byteDepth, char* playPosNow);
 	void bufferZeroForInterpolation(int32_t numChannels);
 
-	uint32_t oscPos;
-	char* currentPlayPos;
-	char* reassessmentLocation;
-	char* clusterStartLocation; // You're allowed to read from this location, but not move any further "back" past it
-	uint8_t reassessmentAction;
-	int8_t interpolationBufferSizeLastTime; // 0 if was previously switched off
+	uint32_t oscPos{};
+	char* currentPlayPos{};
+	char* reassessmentLocation{};
+	char* clusterStartLocation{}; // You're allowed to read from this location, but not move any further "back" past it
+	uint8_t reassessmentAction{};
+	int8_t interpolationBufferSizeLastTime{}; // 0 if was previously switched off
 
-	deluge::dsp::Interpolator interpolator_;
+	deluge::dsp::Interpolator interpolator_{};
 
 	std::array<Cluster*, kNumClustersLoadedAhead> clusters = {nullptr, nullptr};
 

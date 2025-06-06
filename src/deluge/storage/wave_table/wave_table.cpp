@@ -389,13 +389,13 @@ gotError5:
 				if (clusterIndex != clusterIndexCurrentlyLoaded) {
 
 					// First, unload the old Cluster if there was one
-					if (cluster) {
+					if (cluster != nullptr) {
 						audioFileManager.removeReasonFromCluster(*cluster, "E385");
 					}
 
-					cluster = sample->clusters.getElement(clusterIndex)
-					              ->getCluster(sample, clusterIndex, CLUSTER_LOAD_IMMEDIATELY, 0, &error);
-					if (!cluster) {
+					cluster = sample->clusters[clusterIndex].getCluster(sample, clusterIndex, CLUSTER_LOAD_IMMEDIATELY,
+					                                                    0, &error);
+					if (cluster == nullptr) {
 						goto gotError5;
 					}
 
@@ -417,26 +417,25 @@ gotError5:
 				}
 			}
 
-			// Macro setup for below
-#define CONVERT_AND_STORE_SAMPLE                                                                                       \
-	{                                                                                                                  \
-		if (rawDataFormat == RawDataFormat::FLOAT) {                                                                   \
-			value32 = q31_from_float(std::bit_cast<float>(value32));                                                   \
-		}                                                                                                              \
-		else {                                                                                                         \
-			if (swappingEndianness) {                                                                                  \
-				value32 = swapEndianness32(value32);                                                                   \
-			}                                                                                                          \
-			value32 &= bitMask;                                                                                        \
-			if (rawDataFormat == RawDataFormat::UNSIGNED_8) {                                                          \
-				value32 += (1 << 31);                                                                                  \
-			}                                                                                                          \
-		}                                                                                                              \
-		*(cycleBufferDestination++) =                                                                                  \
-		    value32 >> MAGNITUDE_REDUCTION_FOR_FFT; /* Store full 32-bit value in cycle buffer (reduced in magnitude   \
-		                                               for FFT). */                                                    \
-		*(initialBandWritePos++) = value32 >> 16;   /* Bands only store 16-bit data. */                                \
-	}
+			// for below
+			auto convert_and_store_sample = [&](int32_t value32) {
+				if (rawDataFormat == RawDataFormat::FLOAT) {
+					value32 = q31_from_float(std::bit_cast<float>(value32));
+				}
+				else {
+					if (swappingEndianness) {
+						value32 = swapEndianness32(value32);
+					}
+					value32 &= bitMask;
+					if (rawDataFormat == RawDataFormat::UNSIGNED_8) {
+						value32 += (1 << 31);
+					}
+				}
+				*(cycleBufferDestination++) =
+				    value32 >> MAGNITUDE_REDUCTION_FOR_FFT; /* Store full 32-bit value in cycle buffer (reduced in
+				                                               magnitude for FFT). */
+				*(initialBandWritePos++) = value32 >> 16;   /* Bands only store 16-bit data. */
+			};
 
 			// If previous Cluster had overlapping sample at end...
 			if (byteIndexWithinCluster < 0) {
@@ -458,11 +457,9 @@ gotError5:
 				uint32_t bytesOverlappingThisCluster =
 				    *(uint32_t*)source & ((uint32_t)0xFFFFFFFF << (-byteIndexWithinClusterMisaligned * 8));
 
-				int32_t value32 = bytesOverlappingThisCluster | bytesOverlappingFromLastCluster;
+				convert_and_store_sample(bytesOverlappingThisCluster | bytesOverlappingFromLastCluster);
 
-				CONVERT_AND_STORE_SAMPLE;
-
-				if (!sample) {
+				if (sample == nullptr) {
 					reader->byteIndexWithinCluster +=
 					    byteDepth + byteIndexWithinCluster; // +byteIndexWithinCluster because we already moved forward
 					                                        // an extra -byteIndexWithinCluster, above.
@@ -499,7 +496,7 @@ gotError5:
 			// Read all the data we can before reaching either the end of the cycle, or the end of the file cluster
 			while (source < sourceStopAt) {
 				int32_t value32 = *(int32_t*)source;
-				CONVERT_AND_STORE_SAMPLE;
+				convert_and_store_sample(reinterpret_cast<const int32_t&>(source));
 				source += byteDepth;
 			}
 
@@ -937,34 +934,31 @@ WaveTable::doRenderingLoop(int32_t* __restrict__ thisSample, int32_t const* buff
 		}
 
 		// Grab the actual waveform data from memory, for both cycles that we need for this sample
-		int16x8x2_t interpolationBuffer[2];
-		for (int32_t i = 0; i < kInterpolationMaxNumSamples >> 3; i++) {
-			interpolationBuffer[0].val[i] = vld1q_s16(&table1[whichValueStored[i]]);
-		}
-		for (int32_t i = 0; i < kInterpolationMaxNumSamples >> 3; i++) {
-			interpolationBuffer[1].val[i] = vld1q_s16(&table2[whichValueStored[i]]);
+		std::array<std::array<Argon<int16_t>, kInterpolationMaxNumSamples / 8>, 2> interpolationBuffer;
+		for (int32_t i = 0; i < kInterpolationMaxNumSamples / 8; i++) {
+			interpolationBuffer[0][i] = Argon<int16_t>::Load(&table1[whichValueStored[i]]);
+			interpolationBuffer[1][i] = Argon<int16_t>::Load(&table2[whichValueStored[i]]);
 		}
 
 // Get the windowed sinc kernel that we need for this individual audio-sample
 #define numBitsInWindowedSyncTableSize 8
 #define rshiftAmount ((32 + kInterpolationMaxNumSamplesMagnitude) - 16 - numBitsInWindowedSyncTableSize + 1)
 
-		uint32_t rshifted =
-		    ((uint32_t)-phase)
-		    >> (rshiftAmount - bandCycleSizeMagnitude); // Warning - rshiftAmount is 13, so bandCycleSizeMagnitude
-		                                                // better not be bigger than that!
+		// Warning - rshiftAmount is 13, so bandCycleSizeMagnitude better not be bigger than that!
+		uint32_t rshifted = ((uint32_t)-phase) >> (rshiftAmount - bandCycleSizeMagnitude);
 		int16_t strength2 = rshifted & 32767;
 
+		// The -5 is for 32 bytes (16 samples) per line in the windowed sinc table.
 		int32_t windowedSincTableLineOffsetBytes =
-		    ((uint32_t)-phase)
-		    >> (32 + kInterpolationMaxNumSamplesMagnitude - numBitsInWindowedSyncTableSize - 5
-		        - bandCycleSizeMagnitude); // The -5 is for 32 bytes (16 samples) per line in the windowed sinc table.
+		    ((uint32_t)-phase) >> (32 + kInterpolationMaxNumSamplesMagnitude - numBitsInWindowedSyncTableSize - 5
+		                           - bandCycleSizeMagnitude);
 		windowedSincTableLineOffsetBytes &= 0b111100000;
 		int16_t const* __restrict__ sincKernelReadPos =
 		    (int16_t const*)((uint32_t)&kernel[0] + windowedSincTableLineOffsetBytes);
 
-		int16x8_t kernelVector[kInterpolationMaxNumSamples >> 3];
+		std::array<Argon<int16_t>, kInterpolationMaxNumSamples / 8> kernelVector;
 
+		// TODO @stellar-aria: Investigate below
 		/*
 		int16x8x4_t windowedSincReadValues = vld4q_s16(sincKernelReadPos); // Insanely, I could not get this to work.
 		Tried reading 2 values, too. I just get some noise from final output.
@@ -976,47 +970,36 @@ WaveTable::doRenderingLoop(int32_t* __restrict__ thisSample, int32_t const* buff
 		}
 		*/
 
-		for (int32_t i = 0; i < (kInterpolationMaxNumSamples >> 3); i++) {
-			int16x8_t value1 = vld1q_s16(sincKernelReadPos + (i << 3));
-			int16x8_t value2 = vld1q_s16(sincKernelReadPos + 16 + (i << 3));
+		for (int32_t i = 0; i < (kInterpolationMaxNumSamples / 8); i++) {
+			auto value1 = Argon<int16_t>::Load(sincKernelReadPos + (i * 8));
+			auto value2 = Argon<int16_t>::Load(sincKernelReadPos + 16 + (i * 8));
 
-			int16x8_t difference = vsubq_s16(value2, value1);
-			int16x8_t multipliedDifference = vqdmulhq_n_s16(difference, strength2);
-			kernelVector[i] = vaddq_s16(value1, multipliedDifference);
+			auto difference = value2 - value1;
+			auto multipliedDifference = difference.MultiplyQMax(strength2);
+			kernelVector[i] = value1 + multipliedDifference;
 		}
 
 		// Apply the windowed sinc kernel to the waveform data
-		int32x2_t twosies[2];
+		std::array<ArgonHalf<int32_t>, 2> twosies;
 		for (int32_t c = 0; c < 2; c++) {
-			int32x4_t multiplied;
+			Argon<q31_t> multiplied = 0;
 			for (int32_t i = 0; i < (kInterpolationMaxNumSamples >> 3); i++) {
-
-				if (i == 0) {
-					multiplied = vmull_s16(vget_low_s16(kernelVector[i]), vget_low_s16(interpolationBuffer[c].val[i]));
-				}
-				else {
-					multiplied = vmlal_s16(multiplied, vget_low_s16(kernelVector[i]),
-					                       vget_low_s16(interpolationBuffer[c].val[i]));
-				}
-
-				multiplied =
-				    vmlal_s16(multiplied, vget_high_s16(kernelVector[i]), vget_high_s16(interpolationBuffer[c].val[i]));
+				multiplied = multiplied // accumulate
+				                 .MultiplyAddLong(kernelVector[i].GetLow(), interpolationBuffer[c][i].GetLow())
+				                 .MultiplyAddLong(kernelVector[i].GetHigh(), interpolationBuffer[c][i].GetHigh());
 			}
 
-			twosies[c] = vadd_s32(vget_high_s32(multiplied), vget_low_s32(multiplied));
+			twosies[c] = multiplied.GetHigh() + multiplied.GetLow();
 		}
 
 		// We now have one value for each cycle, so linearly interpolate between those.
-		int32x2_t onesie = vpadd_s32(twosies[0], twosies[1]);
-		int32_t value1 = vget_lane_s32(onesie, 0);
-		int32_t difference = vget_lane_s32(onesie, 1) - value1;
+		ArgonHalf<q31_t> onesie = twosies[0].PairwiseAdd(twosies[1]);
+		auto value1 = FixedPoint<31>::from_raw(onesie[0]);
+		auto difference = FixedPoint<31>::from_raw(onesie[1] - onesie[0]);
 
-		int32_t waveTableFinalValue = multiply_accumulate_32x32_rshift32_rounded(
-		    value1 >> 1, difference,
-		    crossCycleStrength2 >> 1); // Have to make value1 a magnitude smaller, because the difference is getting a
-		                               // magnitude smaller as a multiplication like this always does.
-
-		*thisSample = waveTableFinalValue;
+		// Have to make value1 a magnitude smaller, because the difference is getting a
+		// magnitude smaller as a multiplication like this always does.
+		*thisSample = value1.MultiplyAdd(difference, FixedPoint<31>::from_raw(crossCycleStrength2 >> 1)).raw();
 
 		crossCycleStrength2 += crossCycleStrength2Increment;
 
@@ -1128,8 +1111,8 @@ startRenderingACycle:
 				uint32_t resetterPhase = resetterPhaseThisCycle;
 				int32_t numSamplesThisOscSyncSession = numSamplesThisCycle;
 				renderOscSync(
-				    [&](int32_t const* const bufferEndThisSyncRender, uint32_t phase, int32_t* __restrict__ writePos) {
-					    doRenderingLoop(bufferStartThisSync, bufferEndThisSyncRender, firstCycleNumber, bandHere, phase,
+				    [&](std::span<q31_t> buffer, uint32_t phase) {
+					    doRenderingLoop(bufferStartThisSync, &*buffer.end(), firstCycleNumber, bandHere, phase,
 					                    phaseIncrement, crossCycleStrength2, crossCycleStrength2Increment, kernel);
 				    },
 				    [&](uint32_t samplesIncludingNextCrossoverSample) {
@@ -1164,9 +1147,9 @@ doneRenderingACycle:
 			uint32_t resetterPhase = resetterPhaseThisCycle;
 			int32_t numSamplesThisOscSyncSession = numSamples;
 			renderOscSync(
-			    [&](int32_t const* const bufferEndThisSyncRender, uint32_t phase, int32_t* __restrict__ writePos) {
-				    doRenderingLoopSingleCycle(bufferStartThisSync, bufferEndThisSyncRender, bandHere, phase,
-				                               phaseIncrement, kernel);
+			    [&](std::span<q31_t> buffer, uint32_t phase) {
+				    doRenderingLoopSingleCycle(bufferStartThisSync, &*buffer.end(), bandHere, phase, phaseIncrement,
+				                               kernel);
 			    },
 			    [](uint32_t) {}, phase, phaseIncrement, resetterPhase, resetterPhaseIncrement,
 			    resetterDivideByPhaseIncrement, retriggerPhase, numSamplesThisOscSyncSession, bufferStartThisSync);
@@ -1185,9 +1168,9 @@ void WaveTable::numReasonsIncreasedFromZero() {
 
 	// Remove all bands' data from Stealable-queue, as it may no longer be stolen.
 	for (int32_t b = bands.getNumElements() - 1; b >= 0; b--) {
-		WaveTableBand* band = (WaveTableBand*)bands.getElementAddress(b);
+		auto* band = (WaveTableBand*)bands.getElementAddress(b);
 		if (band->data) {
-			band->data->remove();
+			band->data->unlink(); // Remove from queue
 		}
 	}
 }
@@ -1196,14 +1179,14 @@ void WaveTable::numReasonsDecreasedToZero(char const* errorCode) {
 
 	// Put all bands' data in queue to be stolen.
 	for (int32_t b = bands.getNumElements() - 1; b >= 0; b--) {
-		WaveTableBand* band = (WaveTableBand*)bands.getElementAddress(b);
-		if (band->data) {
+		auto* band = (WaveTableBand*)bands.getElementAddress(b);
+		if (band->data != nullptr) {
 #if ALPHA_OR_BETA_VERSION
-			if (band->data->list) {
+			if (band->data->is_linked()) {
 				FREEZE_WITH_ERROR("E388");
 			}
 #endif
-			GeneralMemoryAllocator::get().putStealableInQueue(band->data, StealableQueue::NO_SONG_WAVETABLE_BAND_DATA);
+			GeneralMemoryAllocator::get().putStealableInQueue(*band->data, StealableQueue::NO_SONG_WAVETABLE_BAND_DATA);
 		}
 	}
 }

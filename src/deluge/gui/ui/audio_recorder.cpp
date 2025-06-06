@@ -127,7 +127,8 @@ gotError:
 }
 
 void AudioRecorder::renderOLED(deluge::hid::display::oled_canvas::Canvas& canvas) {
-	canvas.drawStringCentred("Waiting", 19, kTextBigSpacingX, kTextBigSizeY);
+	const char* current_status_text = updatedRecordingStatus ? "Recording" : "Waiting";
+	canvas.drawStringCentred(current_status_text, 19, kTextBigSpacingX, kTextBigSizeY);
 }
 
 bool AudioRecorder::setupRecordingToFile(AudioInputChannel newMode, int32_t newNumChannels,
@@ -188,8 +189,11 @@ void AudioRecorder::slowRoutine() {
 
 void AudioRecorder::process() {
 	while (true) {
-
-		AudioEngine::routineWithClusterLoading();
+		if (!AudioEngine::audioRoutineLocked) {
+			// Sean: replace routineWithClusterLoading call, yield until AudioRoutine is called
+			AudioEngine::routineBeenCalled = false;
+			yield([]() { return (AudioEngine::routineBeenCalled == true); });
+		}
 
 		uiTimerManager.routine();
 
@@ -209,7 +213,7 @@ void AudioRecorder::process() {
 
 			else {
 				// We want to attach that Sample to a Source right away...
-				soundEditor.currentSound->unassignAllVoices();
+				soundEditor.currentSound->killAllVoices();
 				soundEditor.currentSource->setOscType(OscType::SAMPLE);
 				soundEditor.currentMultiRange->getAudioFileHolder()->filePath.set(&recorder->sample->filePath);
 				soundEditor.currentMultiRange->getAudioFileHolder()->setAudioFile(

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <type_traits>
 
 /**
  * @brief This class represents the colour format most used by the Deluge globally
@@ -33,12 +34,7 @@ public:
 	channel_type b = 0;
 
 	/// Copies RGB values from a colour
-	constexpr RGB& operator=(const RGB& other) {
-		r = other.r;
-		g = other.g;
-		b = other.b;
-		return *this;
-	}
+	constexpr RGB& operator=(const RGB& other) = default;
 
 	/**
 	 * @brief Construct a monochrome (white) shade
@@ -46,7 +42,9 @@ public:
 	 * @param brightness The brightness level
 	 * @return RGB The constructed colour
 	 */
-	static constexpr RGB monochrome(uint8_t brightness) { return RGB{brightness, brightness, brightness}; }
+	static constexpr RGB monochrome(uint8_t brightness) {
+		return RGB{.r = brightness, .g = brightness, .b = brightness};
+	}
 
 	/**
 	 * @brief Construct a colour from a hue
@@ -282,18 +280,18 @@ public:
 
 private:
 	static constexpr uint32_t IMat[4][4] = {
-	    {ONE_Q15, 0, 0, 0},
-	    {0, ONE_Q15, 0, 0},
-	    {0, 0, ONE_Q15, 0},
-	    {0, 0, 0, ONE_Q15},
+	    {ONE_Q16, 0, 0, 0},
+	    {0, ONE_Q16, 0, 0},
+	    {0, 0, ONE_Q16, 0},
+	    {0, 0, 0, ONE_Q16},
 	};
 	static constexpr float c = 0.5403f;
 	static constexpr float s = 0.8414f;
 	static constexpr uint32_t RMat[4][4] = {
-	    {(uint32_t)(c * ONE_Q15), 0, (uint32_t)(s* ONE_Q15), 0},
-	    {(uint32_t)(s * ONE_Q15), (uint32_t)(c* ONE_Q15), 0, 0},
-	    {0, (uint32_t)(s* ONE_Q15), (uint32_t)(c* ONE_Q15), 0},
-	    {0, 0, 0, ONE_Q15},
+	    {(uint32_t)(c * ONE_Q16), 0, (uint32_t)(s* ONE_Q16), 0},
+	    {(uint32_t)(s * ONE_Q16), (uint32_t)(c* ONE_Q16), 0, 0},
+	    {0, (uint32_t)(s* ONE_Q16), (uint32_t)(c* ONE_Q16), 0},
+	    {0, 0, 0, ONE_Q16},
 	};
 
 	constexpr RGB xform(const uint32_t mat[4][4]) {
@@ -322,3 +320,4 @@ private:
 		return std::clamp<uint32_t>(newRGB, 0, channel_max);
 	}
 };
+static_assert(std::is_trivially_copyable_v<RGB>, "RGB must be trivially copyable");

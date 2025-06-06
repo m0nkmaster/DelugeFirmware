@@ -413,6 +413,10 @@ moveAfterClipInstance:
 					return ActionResult::DEALT_WITH;
 				}
 			}
+			// try loop recording if holding clip in song view
+			else if (isUIModeActive(UI_MODE_CLIP_PRESSED_IN_SONG_VIEW)) {
+				playbackHandler.tryLoopCommand(FlashStorage::defaultLoopRecordingCommand);
+			}
 			else {
 				goto notDealtWith;
 			}
@@ -1332,7 +1336,6 @@ void SessionView::commandChangeClipPreset(int8_t offset) {
 	else {
 		auto ao = (AudioOutput*)clip->output;
 		ao->scrollAudioOutputMode(offset);
-		renderUIsForOled();
 	}
 }
 
@@ -1411,12 +1414,7 @@ ActionResult SessionView::horizontalEncoderAction(int32_t offset) {
 ActionResult SessionView::verticalEncoderAction(int32_t offset, bool inCardRoutine) {
 
 	if (currentUIMode == UI_MODE_NONE && Buttons::isButtonPressed(deluge::hid::button::Y_ENC)) {
-		if (Buttons::isShiftButtonPressed()) {
-			currentSong->adjustMasterTransposeInterval(offset);
-		}
-		else {
-			currentSong->transpose(offset);
-		}
+		currentSong->commandTranspose(offset);
 	}
 	else if (currentUIMode == UI_MODE_NONE || currentUIMode == UI_MODE_CLIP_PRESSED_IN_SONG_VIEW
 	         || currentUIMode == UI_MODE_VIEWING_RECORD_ARMING
@@ -3062,6 +3060,19 @@ Clip* SessionView::getClipForLayout() {
 	}
 }
 
+int32_t SessionView::getClipIndexForLayout() {
+	switch (currentSong->sessionLayout) {
+	case SessionLayoutType::SessionLayoutTypeGrid: {
+		return gridClipIndexFromCoords(gridFirstPressedX, gridFirstPressedY);
+		break;
+	}
+	case SessionLayoutType::SessionLayoutTypeRows:
+	default: {
+		return (sessionView.selectedClipPressYDisplay + currentSong->songViewYScroll);
+	}
+	}
+}
+
 void SessionView::selectLayout(int8_t offset) {
 	gridSetDefaultMode();
 	// only reset first pad if it's not still held
@@ -3596,6 +3607,8 @@ void SessionView::setupNewClip(Clip* newClip) {
 	}
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstack-usage="
 void SessionView::copyClipName(Clip* source, Clip* target, Output* targetOutput) {
 	if (source->name.isEmpty()) {
 		return;
@@ -3626,6 +3639,7 @@ void SessionView::copyClipName(Clip* source, Clip* target, Output* targetOutput)
 	}
 	target->name.set(newName.data());
 }
+#pragma GCC diagnostic pop
 
 Clip* SessionView::gridCreateClip(uint32_t targetSection, Output* targetOutput, Clip* sourceClip) {
 	actionLogger.deleteAllLogs();
@@ -4659,6 +4673,7 @@ int32_t SessionView::gridTrackIndexFromX(uint32_t x, uint32_t maxTrack) {
 
 Output* SessionView::gridTrackFromX(uint32_t x, uint32_t maxTrack) {
 	auto trackIndex = gridTrackIndexFromX(x, maxTrack);
+
 	if (trackIndex < 0) {
 		return nullptr;
 	}
@@ -4669,6 +4684,7 @@ Output* SessionView::gridTrackFromX(uint32_t x, uint32_t maxTrack) {
 Clip* SessionView::gridClipFromCoords(uint32_t x, uint32_t y) {
 	auto maxTrack = gridTrackCount();
 	Output* track = gridTrackFromX(x, maxTrack);
+
 	if (track == nullptr) {
 		return nullptr;
 	}
@@ -4687,6 +4703,30 @@ Clip* SessionView::gridClipFromCoords(uint32_t x, uint32_t y) {
 
 	return nullptr;
 }
+
+int32_t SessionView::gridClipIndexFromCoords(uint32_t x, uint32_t y) {
+	auto maxTrack = gridTrackCount();
+	Output* track = gridTrackFromX(x, maxTrack);
+
+	if (track == nullptr) {
+		return -1;
+	}
+
+	auto section = gridSectionFromY(y);
+	if (section == -1) {
+		return -1;
+	}
+
+	for (int32_t idxClip = 0; idxClip < currentSong->sessionClips.getNumElements(); ++idxClip) {
+		Clip* clip = currentSong->sessionClips.getClipAtIndex(idxClip);
+		if (clip->output == track && clip->section == section) {
+			return idxClip;
+		}
+	}
+
+	return -1;
+}
+
 Output* SessionView::getOutputFromPad(int32_t x, int32_t y) {
 	if (currentSong->sessionLayout == SessionLayoutType::SessionLayoutTypeGrid) {
 		return gridTrackFromX(x, gridTrackCount());
