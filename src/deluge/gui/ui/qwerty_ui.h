@@ -22,6 +22,9 @@
 #include "util/d_string.h"
 #include <cstdint>
 
+// Keyboard layout characters array declaration
+extern const char keyboardChars[][5][11];
+
 class QwertyUI : public UI {
 public:
 	QwertyUI() = default;

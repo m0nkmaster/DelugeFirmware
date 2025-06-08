@@ -1,0 +1,184 @@
+diff --git a/src/deluge/gui/ui/browser/browser.cpp b/src/deluge/gui/ui/browser/browser.cpp
+index c694ccda..c171c86d 100644
+--- a/src/deluge/gui/ui/browser/browser.cpp
++++ b/src/deluge/gui/ui/browser/browser.cpp
+@@ -1576,7 +1576,7 @@ ActionResult Browser::buttonAction(deluge::hid::Button b, bool on, bool inCardRo
+ }
+ 
+ ActionResult Browser::padAction(int32_t x, int32_t y, int32_t on) {
+-
++	ActionResult result;
+ 	if (favouritesVisible && y == favouriteRow && on) {
+ 		if (sdRoutineLock) {
+ 			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
+@@ -1610,18 +1610,46 @@ ActionResult Browser::padAction(int32_t x, int32_t y, int32_t on) {
+ 		}
+ 		return ActionResult::DEALT_WITH;
+ 	}
+-	else if (favouritesVisible && banksVisible && y == favouriteBankRow && on) {
+-		if (sdRoutineLock) {
+-			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
+-		}
+-		favouritesManager.selectFavouritesBank(x);
+-		favouritesChanged();
+-		return ActionResult::DEALT_WITH;
+-	}
+ 	else {
+-		return QwertyUI::padAction(x, y, on);
++		result = QwertyUI::padAction(x, y, on);
++		// After QWERTY key press, update fuzzy filter and print indices if in fuzzy mode
++		// Only do this for normal keypresses (not backspace/enter/other pads)
++		if (isFuzzyFilterMode() && x >= 3 && x < 14 && y >= kQwertyHomeRow - 2 && y <= kQwertyHomeRow + 2 && on) {
++			D_PRINTLN("padAction: updating fuzzy filter for key press at x=%d y=%d", x, y);
++			// Get the character that was just typed from the keyboard layout
++			char c = keyboardChars[util::to_underlying(FlashStorage::keyboardLayout)][kQwertyHomeRow - y + 2][x - 3];
++			if (c) {
++				// Append the new character to filterText
++				char temp[2] = {c, 0}; // Null-terminated string
++				if (filterText.isEmpty()) {
++					filterText.set(temp);
++				} else {
++					filterText.concatenate(temp);
++				}
++				updateFuzzyFilterIndices();
++				D_PRINT("FuzzyFilter: filterText='%s' indices=", filterText.get());
++				for (int32_t i = 0; i < filteredIndices.getNumElements(); ++i) {
++					int32_t idx = *(int32_t*)filteredIndices.getElementAddress(i);
++					D_PRINT("%d ", idx);
++				}
++				D_PRINTLN("");
++			}
++		}
++		// Handle backspace for filter text
++		else if (isFuzzyFilterMode() && x == 0 && y == 6 && on) { // Backspace pad
++			if (!filterText.isEmpty()) {
++				filterText.shorten(filterText.getLength() - 1);
++				updateFuzzyFilterIndices();
++				D_PRINT("FuzzyFilter: backspace, new filterText='%s' indices=", filterText.get());
++				for (int32_t i = 0; i < filteredIndices.getNumElements(); ++i) {
++					int32_t idx = *(int32_t*)filteredIndices.getElementAddress(i);
++					D_PRINT("%d ", idx);
++				}
++				D_PRINTLN("");
++			}
++		}
++		return result;
+ 	}
+-	return ActionResult::DEALT_WITH;
+ }
+ 
+ void Browser::favouritesChanged() {
+@@ -1900,3 +1928,40 @@ void Browser::sortFileItems() {
+ 		}
+ 	}
+ }
++
++void Browser::updateFuzzyFilterIndices() {
++	D_PRINTLN("updateFuzzyFilterIndices: filterText='%s'", filterText.get());
++	filteredIndices.empty();
++	if (!isFuzzyFilterMode()) {
++		return;
++	}
++	int32_t numFiles = fileItems.getNumElements();
++	if (filterText.isEmpty()) {
++		// Show all items
++		for (int32_t i = 0; i < numFiles; ++i) {
++			int32_t idx = i;
++			filteredIndices.insertAtIndex(filteredIndices.getNumElements());
++			*(int32_t*)filteredIndices.getElementAddress(filteredIndices.getNumElements() - 1) = idx;
++		}
++		return;
++	}
++
++	// Fuzzy filter: case-insensitive substring match
++	const char* filterStr = filterText.get();
++	for (int32_t i = 0; i < numFiles; ++i) {
++		FileItem* fileItem = (FileItem*)fileItems.getElementAddress(i);
++		const char* fileName = fileItem->displayName;
++
++		// Check if filter text is a substring of the filename (case-insensitive)
++		if (strcasestr(fileName, filterStr) != nullptr) {
++			int32_t idx = i;
++			filteredIndices.insertAtIndex(filteredIndices.getNumElements());
++			*(int32_t*)filteredIndices.getElementAddress(filteredIndices.getNumElements() - 1) = idx;
++		}
++	}
++}
++
++void Browser::clearFilterText() {
++	filterText.clear();
++	updateFuzzyFilterIndices();
++}
+diff --git a/src/deluge/gui/ui/browser/browser.h b/src/deluge/gui/ui/browser/browser.h
+index e6ffd666..40e494b1 100644
+--- a/src/deluge/gui/ui/browser/browser.h
++++ b/src/deluge/gui/ui/browser/browser.h
+@@ -24,6 +24,8 @@
+ #include "model/favourite/favourite_manager.h"
+ #include "storage/file_item.h"
+ #include "util/container/array/c_string_array.h"
++#include "util/container/array/resizeable_array.h"
++#include "util/functions.h"
+ 
+ extern "C" {
+ #include "fatfs/ff.h"
+@@ -108,6 +110,11 @@ public:
+ 		return true;
+ 	}
+ 
++	// Fuzzy filter state (for synth/kit/sample browsing only)
++	String filterText;
++	ResizeableArray filteredIndices{sizeof(int32_t)}; // Indices of fileItems matching filter
++	bool filterActive; // True if filter is active (non-empty and in correct mode)
++
+ protected:
+ 	Error setEnteredTextFromCurrentFilename();
+ 	Error goUpOneDirectoryLevel();
+@@ -116,8 +123,8 @@ protected:
+ 	bool predictExtendedText() override;
+ 	void goIntoDeleteFileContextMenu();
+ 	ActionResult mainButtonAction(bool on);
+-	virtual void exitAction();
+ 	virtual ActionResult backButtonAction();
++	virtual void exitAction();
+ 	virtual void folderContentsReady(int32_t entryDirection) {}
+ 	virtual void currentFileChanged(int32_t movementDirection) {}
+ 	void displayText(bool blinkImmediately = false) override;
+@@ -128,6 +135,7 @@ protected:
+ 	                                       Availability availabilityRequirement = Availability::ANY,
+ 	                                       int32_t newCatalogSearchDirection = CATALOG_SEARCH_RIGHT);
+ 	void favouritesChanged();
++	void clearFilterText();
+ 
+ 	static int32_t fileIndexSelected; // If -1, we have not selected any real file/folder. Maybe there are no files, or
+ 	                                  // maybe we're typing a new name.
+@@ -144,7 +152,7 @@ protected:
+ 	int32_t fileIconPt2Width;
+ 
+ 	// 7Seg Only
+-	static int8_t numberEditPos; // -1 is default
++	static int8_t numberEditPos;
+ 	static NumericLayerScrollingText* scrollingText;
+ 	bool shouldWrapFolderContents; // As in, wrap around at the end.
+ 
+@@ -153,6 +161,20 @@ protected:
+ 	// filePrefix is SONG/SYNT/SAMP etc., signifying the portion of the filesystem you're in
+ 	char const* filePrefix;
+ 	bool shouldInterpretNoteNamesForThisBrowser;
++
++	// Returns true if fuzzy filtering should be active (synth, kit, or sample browsing)
++	bool isFuzzyFilterMode() const {
++		// SYNTH and KIT are always fuzzy filter modes
++		if (outputTypeToLoad == OutputType::SYNTH || outputTypeToLoad == OutputType::KIT)
++			return true;
++		// For samples, outputTypeToLoad is NONE, but only enable in SAMPLES directory
++		if (outputTypeToLoad == OutputType::NONE && currentDir.getLength() >= 7 &&
++			!memcasecmp(currentDir.get(), "SAMPLES", 7))
++			return true;
++		return false;
++	}
++
++	void updateFuzzyFilterIndices();
+ };
+ 
+ inline void printInstrumentFileList(const char* where) {
