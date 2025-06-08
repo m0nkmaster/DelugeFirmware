@@ -1654,10 +1654,13 @@ ActionResult Browser::buttonAction(deluge::hid::Button b, bool on, bool inCardRo
 
 	// Back button
 	else if (b == BACK) {
+		D_PRINTLN("DEBUG: BACK button pressed, on=%d, currentUIMode=%d", on, currentUIMode);
 		if (on && !currentUIMode) {
 			// Fuzzy filter mode: BACK button acts as backspace
 			if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+				D_PRINTLN("DEBUG: In fuzzy filter mode, filterText='%s'", filterText.get());
 				filterText.shorten(filterText.getLength() - 1);
+				D_PRINTLN("DEBUG: After shorten, filterText='%s'", filterText.get());
 				updateFuzzyFilterIndices();
 				D_PRINTLN("FuzzyFilter: backspace (BACK button), new filterText='%s'", filterText.get());
 				return ActionResult::DEALT_WITH;
@@ -1744,6 +1747,15 @@ ActionResult Browser::padAction(int32_t x, int32_t y, int32_t on) {
 				}
 				D_PRINTLN("");
 			}
+		}
+		// Handle red backspace pads for filter text
+		else if (isFuzzyFilterMode() && y == kQwertyHomeRow + 2 && x >= 14 && x < 16 && on) {
+			if (!filterText.isEmpty()) {
+				filterText.shorten(filterText.getLength() - 1);
+				updateFuzzyFilterIndices();
+				D_PRINTLN("FuzzyFilter: backspace (red pad), new filterText='%s'", filterText.get());
+			}
+			return result;
 		}
 		return result;
 	}
@@ -1849,6 +1861,8 @@ Error Browser::setEnteredTextFromCurrentFilename() {
 Error Browser::goIntoFolder(char const* folderName) {
 	Error error;
 
+	clearFilterText();
+
 	if (!currentDir.isEmpty()) {
 		error = currentDir.concatenate("/");
 		if (error != Error::NONE) {
@@ -1876,6 +1890,8 @@ Error Browser::goIntoFolder(char const* folderName) {
 }
 
 Error Browser::goUpOneDirectoryLevel() {
+
+	clearFilterText();
 
 	char const* currentDirChars = currentDir.get();
 	char const* slashAddress = strrchr(currentDirChars, '/');

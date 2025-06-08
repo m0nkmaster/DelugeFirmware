@@ -158,6 +158,7 @@ The Deluge is a complex real-time system. Users depend on stability. Every chang
 - **Tested** - At least by building
 - **Understood** - You can explain it
 - **Reversible** - Easy to undo
+- **Consistant Messages** - Use Conventional Commit message format
 
 **If you cannot explain your change in one sentence, it's too complex. Break it down further.**
 
