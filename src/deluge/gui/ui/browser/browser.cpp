@@ -121,6 +121,7 @@ void Browser::close() {
 	emptyFileItems();
 	favouritesManager.close();
 	favouritesVisible = false;
+	clearFilterText();
 	QwertyUI::close();
 }
 
@@ -975,177 +976,159 @@ void Browser::selectEncoderAction(int8_t offset) {
 
 	int32_t newFileIndex;
 
-	if (fileIndexSelected < 0) { // If no file selected and we were typing a new name?
-		if (!fileItems.getNumElements()) {
-			return;
+	// If in fuzzy filter mode, handle selection differently
+	if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+		// Find current position in filtered list
+		int32_t currentFilteredIndex = -1;
+		for (int32_t i = 0; i < filteredIndices.getNumElements(); i++) {
+			if (*(int32_t*)filteredIndices.getElementAddress(i) == fileIndexSelected) {
+				currentFilteredIndex = i;
+				break;
+			}
 		}
 
-		newFileIndex = fileItems.search(enteredText.get());
-		if (offset < 0) {
-			newFileIndex--;
+		// If not found in filtered list, start from beginning
+		if (currentFilteredIndex == -1) {
+			currentFilteredIndex = 0;
 		}
+
+		// Calculate new position in filtered list
+		int32_t newFilteredIndex = currentFilteredIndex + offset;
+
+		// Handle wrapping
+		if (newFilteredIndex < 0) {
+			if (shouldWrapFolderContents) {
+				newFilteredIndex = filteredIndices.getNumElements() - 1;
+			} else {
+				return;
+			}
+		}
+		else if (newFilteredIndex >= filteredIndices.getNumElements()) {
+			if (shouldWrapFolderContents) {
+				newFilteredIndex = 0;
+			} else {
+				return;
+			}
+		}
+
+		// Get the actual file index from filtered list
+		newFileIndex = *(int32_t*)filteredIndices.getElementAddress(newFilteredIndex);
 	}
 	else {
-		// If user is holding shift, skip past any subslots. And on numeric Deluge, user may have chosen one digit to
-		// "edit".
-		if (display->haveOLED()) {
-			// TODO: deal with deleted FileItems here...
-			int32_t numberEditPosNow = numberEditPos;
-			if (Buttons::isShiftButtonPressed() && numberEditPosNow == -1) {
-				numberEditPosNow = 0;
-			}
-
-			if (numberEditPosNow != -1) {
-				Slot thisSlot = getSlot(enteredText.get());
-				if (thisSlot.slot < 0) {
-					goto nonNumeric;
-				}
-				D_PRINTLN("treating as numeric");
-				thisSlot.subSlot = -1;
-				switch (numberEditPosNow) {
-				case 0:
-					thisSlot.slot += offset;
-					break;
-
-				case 1:
-					thisSlot.slot = (thisSlot.slot / 10 + offset) * 10;
-					break;
-
-				case 2:
-					thisSlot.slot = (thisSlot.slot / 100 + offset) * 100;
-					break;
-
-				default:
-					__builtin_unreachable();
-				}
-
-				char searchString[6];
-				char* searchStringNumbersStart = searchString;
-				int32_t minNumDigits = 1;
-				intToString(thisSlot.slot, searchStringNumbersStart, minNumDigits);
-				if (offset < 0) {
-					char* pos = strchr(searchStringNumbersStart, 0);
-					*pos = 'A';
-					pos++;
-					*pos = 0;
-				}
-				newFileIndex = fileItems.search(searchString);
-				if (offset < 0) {
-					newFileIndex--;
-				}
-			}
-			else {
-				newFileIndex = fileIndexSelected + offset;
-			}
-		}
-		else {
-			if (filePrefix && Buttons::isShiftButtonPressed()) {
-				int32_t filePrefixLength = strlen(filePrefix);
-				char const* enteredTextChars = enteredText.get();
-				if (memcasecmp(filePrefix, enteredTextChars, filePrefixLength)) {
-					goto nonNumeric;
-				}
-				Slot thisSlot = getSlot(&enteredTextChars[filePrefixLength]);
-				if (thisSlot.slot < 0) {
-					goto nonNumeric;
-				}
-				D_PRINTLN("treating as numeric");
-				thisSlot.slot += offset;
-
-				char searchString[9];
-				memcpy(searchString, filePrefix, filePrefixLength);
-				char* searchStringNumbersStart = searchString + filePrefixLength;
-				int32_t minNumDigits = 3;
-				intToString(thisSlot.slot, searchStringNumbersStart, minNumDigits);
-				if (offset < 0) {
-					char* pos = strchr(searchStringNumbersStart, 0);
-					*pos = 'A';
-					pos++;
-					*pos = 0;
-				}
-				newFileIndex = fileItems.search(searchString);
-				if (offset < 0) {
-					newFileIndex--;
-				}
-			}
-			else {
-nonNumeric:
-				newFileIndex = fileIndexSelected + offset;
-			}
-		}
-	}
-
-	int32_t newCatalogSearchDirection;
-	Error error;
-
-	if (newFileIndex < 0) {
-		D_PRINTLN("index below 0");
-		if (numFileItemsDeletedAtStart) {
-			scrollPosVertical = 9999;
-
-tryReadingItems:
-			D_PRINTLN("reloading");
-			error = readFileItemsFromFolderAndMemory(currentSong, outputTypeToLoad, filePrefix, enteredText.get(), NULL,
-			                                         true, Availability::ANY, CATALOG_SEARCH_BOTH);
-			if (error != Error::NONE) {
-gotErrorAfterAllocating:
-				D_PRINTLN("error while reloading, emptying file items");
-				emptyFileItems();
+		// Original selection logic for non-filtered mode
+		if (fileIndexSelected < 0) { // If no file selected and we were typing a new name?
+			if (!fileItems.getNumElements()) {
 				return;
-				// TODO - need to close UI or something?
 			}
 
-			newFileIndex = fileItems.search(enteredText.get()) + offset;
-			D_PRINTLN("new file Index is %d", newFileIndex);
+			newFileIndex = fileItems.search(enteredText.get());
+			if (offset < 0) {
+				newFileIndex--;
+			}
 		}
-
-		else if (!shouldWrapFolderContents && display->have7SEG()) {
-			return;
-		}
-
-		else { // Wrap to end
-			scrollPosVertical = 0;
-
-			if (numFileItemsDeletedAtEnd) {
-				newCatalogSearchDirection = CATALOG_SEARCH_LEFT;
-searchFromOneEnd:
-				D_PRINTLN("reloading and wrap");
-				error =
-				    readFileItemsFromFolderAndMemory(currentSong, outputTypeToLoad, filePrefix, NULL, NULL, true,
-				                                     Availability::ANY, newCatalogSearchDirection); // Load from start
-				if (error != Error::NONE) {
-					goto gotErrorAfterAllocating;
+		else {
+			// If user is holding shift, skip past any subslots. And on numeric Deluge, user may have chosen one digit to
+			// "edit".
+			if (display->haveOLED()) {
+				// TODO: deal with deleted FileItems here...
+				int32_t numberEditPosNow = numberEditPos;
+				if (Buttons::isShiftButtonPressed() && numberEditPosNow == -1) {
+					numberEditPosNow = 0;
 				}
 
-				newFileIndex =
-				    (newCatalogSearchDirection == CATALOG_SEARCH_LEFT) ? (fileItems.getNumElements() - 1) : 0;
+				if (numberEditPosNow != -1) {
+					Slot thisSlot = getSlot(enteredText.get());
+					if (thisSlot.slot < 0) {
+						goto nonNumeric;
+					}
+					D_PRINTLN("treating as numeric");
+					thisSlot.subSlot = -1;
+					switch (numberEditPosNow) {
+					case 0:
+						thisSlot.slot += offset;
+						break;
+
+					case 1:
+						thisSlot.slot = (thisSlot.slot / 10 + offset) * 10;
+						break;
+
+					case 2:
+						thisSlot.slot = (thisSlot.slot / 100 + offset) * 100;
+						break;
+
+					default:
+						__builtin_unreachable();
+					}
+
+					char searchString[6];
+					char* searchStringNumbersStart = searchString;
+					int32_t minNumDigits = 1;
+					intToString(thisSlot.slot, searchStringNumbersStart, minNumDigits);
+					if (offset < 0) {
+						char* pos = strchr(searchStringNumbersStart, 0);
+						*pos = 'A';
+						pos++;
+						*pos = 0;
+					}
+					newFileIndex = fileItems.search(searchString);
+					if (offset < 0) {
+						newFileIndex--;
+					}
+				}
+				else {
+					newFileIndex = fileIndexSelected + offset;
+				}
 			}
 			else {
+				if (filePrefix && Buttons::isShiftButtonPressed()) {
+					int32_t filePrefixLength = strlen(filePrefix);
+					char const* enteredTextChars = enteredText.get();
+					if (memcasecmp(filePrefix, enteredTextChars, filePrefixLength)) {
+						goto nonNumeric;
+					}
+					Slot thisSlot = getSlot(&enteredTextChars[filePrefixLength]);
+					if (thisSlot.slot < 0) {
+						goto nonNumeric;
+					}
+					D_PRINTLN("treating as numeric");
+					thisSlot.slot += offset;
+
+					char searchString[9];
+					memcpy(searchString, filePrefix, filePrefixLength);
+					char* searchStringNumbersStart = searchString + filePrefixLength;
+					int32_t minNumDigits = 3;
+					intToString(thisSlot.slot, searchStringNumbersStart, minNumDigits);
+					if (offset < 0) {
+						char* pos = strchr(searchStringNumbersStart, 0);
+						*pos = 'A';
+						pos++;
+						*pos = 0;
+					}
+					newFileIndex = fileItems.search(searchString);
+					if (offset < 0) {
+						newFileIndex--;
+					}
+				}
+				else {
+nonNumeric:
+					newFileIndex = fileIndexSelected + offset;
+				}
+			}
+		}
+
+		// Handle wrapping and bounds checking for non-filtered mode
+		if (newFileIndex < 0) {
+			if (shouldWrapFolderContents) {
 				newFileIndex = fileItems.getNumElements() - 1;
+			} else {
+				return;
 			}
 		}
-	}
-
-	else if (newFileIndex >= fileItems.getNumElements()) {
-		D_PRINTLN("out of file items");
-		if (numFileItemsDeletedAtEnd) {
-			scrollPosVertical = 0;
-			goto tryReadingItems;
-		}
-
-		else if (!shouldWrapFolderContents && display->have7SEG()) {
-			return;
-		}
-
-		else {
-			scrollPosVertical = 9999;
-
-			if (numFileItemsDeletedAtStart) {
-				newCatalogSearchDirection = CATALOG_SEARCH_RIGHT;
-				goto searchFromOneEnd;
-			}
-			else {
+		else if (newFileIndex >= fileItems.getNumElements()) {
+			if (shouldWrapFolderContents) {
 				newFileIndex = 0;
+			} else {
+				return;
 			}
 		}
 	}
@@ -1156,11 +1139,33 @@ searchFromOneEnd:
 
 	fileIndexSelected = newFileIndex;
 
-	if (scrollPosVertical > fileIndexSelected) {
-		scrollPosVertical = fileIndexSelected;
+	// Update scroll position to keep selected item visible
+	if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+		// Find the position of the selected item in the filtered list
+		int32_t selectedFilteredIndex = -1;
+		for (int32_t i = 0; i < filteredIndices.getNumElements(); i++) {
+			if (*(int32_t*)filteredIndices.getElementAddress(i) == fileIndexSelected) {
+				selectedFilteredIndex = i;
+				break;
+			}
+		}
+
+		if (selectedFilteredIndex != -1) {
+			if (scrollPosVertical > selectedFilteredIndex) {
+				scrollPosVertical = selectedFilteredIndex;
+			}
+			else if (scrollPosVertical < selectedFilteredIndex - (OLED_HEIGHT_CHARS - 2)) {
+				scrollPosVertical = selectedFilteredIndex - (OLED_HEIGHT_CHARS - 2);
+			}
+		}
 	}
-	else if (scrollPosVertical < fileIndexSelected - NUM_FILES_ON_SCREEN + 1) {
-		scrollPosVertical = fileIndexSelected - NUM_FILES_ON_SCREEN + 1;
+	else {
+		if (scrollPosVertical > fileIndexSelected) {
+			scrollPosVertical = fileIndexSelected;
+		}
+		else if (scrollPosVertical < fileIndexSelected - (OLED_HEIGHT_CHARS - 2)) {
+			scrollPosVertical = fileIndexSelected - (OLED_HEIGHT_CHARS - 2);
+		}
 	}
 
 	enteredTextEditPos = 0;
@@ -1169,7 +1174,7 @@ searchFromOneEnd:
 	}
 	else {
 		char const* oldCharAddress = enteredText.get();
-		char const* newCharAddress = getCurrentFileItem()->displayName; // Will have file extension, so beware...
+		char const* newCharAddress = getCurrentFileItem()->displayName;
 		while (true) {
 			char oldChar = *oldCharAddress;
 			char newChar = *newCharAddress;
@@ -1190,7 +1195,7 @@ searchFromOneEnd:
 		}
 	}
 
-	error = setEnteredTextFromCurrentFilename();
+	Error error = setEnteredTextFromCurrentFilename();
 	if (error != Error::NONE) {
 		display->displayError(error);
 		return;
@@ -1362,58 +1367,143 @@ void Browser::renderOLED(deluge::hid::display::oled_canvas::Canvas& canvas) {
 	// If we're currently typing a filename which doesn't (yet?) have a file...
 	if (fileIndexSelected == -1) {
 		displayName = enteredText.get();
-		o = OLED_HEIGHT_CHARS; // Make sure below loop doesn't keep looping.
-		goto drawAFile;
+		isFolder = false;
+		isSelectedIndex = true;
+
+		// Draw graphic
+		int32_t iconWidth = 8;
+		uint8_t const* graphic = isFolder ? deluge::hid::display::OLED::folderIcon : fileIcon;
+		canvas.drawGraphicMultiLine(graphic, iconStartX, yPixel + 0, iconWidth);
+		if (!isFolder && fileIconPt2 && fileIconPt2Width) {
+			canvas.drawGraphicMultiLine(fileIconPt2, iconStartX + iconWidth, yPixel + 0, fileIconPt2Width);
+		}
+
+		// Draw filename
+		char finalChar = isFolder ? 0 : '.';
+		char const* finalCharAddress = strrchr(displayName, finalChar);
+		if (!finalCharAddress) { // Shouldn't happen... or maybe for in-memory presets?
+			finalChar = 0;
+			finalCharAddress = strrchr(displayName, finalChar);
+		}
+
+		int32_t displayStringLength = (uint32_t)finalCharAddress - (uint32_t)displayName;
+
+		if (isSelectedIndex) {
+			drawTextForOLEDEditing(textStartX, OLED_MAIN_WIDTH_PIXELS, yPixel, maxChars, canvas);
+			if (!enteredTextEditPos) {
+				deluge::hid::display::OLED::setupSideScroller(0, enteredText.get(), textStartX,
+				                                          OLED_MAIN_WIDTH_PIXELS, yPixel, yPixel + 8,
+				                                          kTextSpacingX, kTextSpacingY, true);
+			}
+		}
+		else {
+			canvas.drawString(std::string_view{displayName, static_cast<size_t>(displayStringLength)}, textStartX,
+			                  yPixel, kTextSpacingX, kTextSpacingY);
+		}
+
+		yPixel += kTextSpacingY;
 	}
-
 	else {
-		for (o = 0; o < OLED_HEIGHT_CHARS - 1; o++) {
-			{
-				int32_t i = o + scrollPosVertical;
+		// If in fuzzy filter mode, use filteredIndices
+		if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+			D_PRINTLN("renderOLED: Drawing filtered results, numMatches=%d", filteredIndices.getNumElements());
 
-				if (i >= fileItems.getNumElements()) {
+			for (o = 0; o < OLED_HEIGHT_CHARS - 1; o++) {
+				int32_t filteredIndex = o + scrollPosVertical;
+				if (filteredIndex >= filteredIndices.getNumElements()) {
 					break;
+				}
+
+				int32_t i = *(int32_t*)filteredIndices.getElementAddress(filteredIndex);
+				if (i < 0 || i >= fileItems.getNumElements()) {
+					D_PRINTLN("WARNING: Invalid file index %d in filtered list", i);
+					continue;
 				}
 
 				FileItem* thisFile = (FileItem*)fileItems.getElementAddress(i);
 				isFolder = thisFile->isFolder;
 				displayName = thisFile->filename.get();
 				isSelectedIndex = (i == fileIndexSelected);
-			}
-drawAFile:
-			// Draw graphic
-			int32_t iconWidth = 8;
-			uint8_t const* graphic = isFolder ? deluge::hid::display::OLED::folderIcon : fileIcon;
-			canvas.drawGraphicMultiLine(graphic, iconStartX, yPixel + 0, iconWidth);
-			if (!isFolder && fileIconPt2 && fileIconPt2Width) {
-				canvas.drawGraphicMultiLine(fileIconPt2, iconStartX + iconWidth, yPixel + 0, fileIconPt2Width);
-			}
 
-			// Draw filename
-			char finalChar = isFolder ? 0 : '.';
-searchForChar:
-			char const* finalCharAddress = strrchr(displayName, finalChar);
-			if (!finalCharAddress) { // Shouldn't happen... or maybe for in-memory presets?
-				finalChar = 0;
-				goto searchForChar;
-			}
-
-			int32_t displayStringLength = (uint32_t)finalCharAddress - (uint32_t)displayName;
-
-			if (isSelectedIndex) {
-				drawTextForOLEDEditing(textStartX, OLED_MAIN_WIDTH_PIXELS, yPixel, maxChars, canvas);
-				if (!enteredTextEditPos) {
-					deluge::hid::display::OLED::setupSideScroller(0, enteredText.get(), textStartX,
-					                                              OLED_MAIN_WIDTH_PIXELS, yPixel, yPixel + 8,
-					                                              kTextSpacingX, kTextSpacingY, true);
+				// Draw graphic
+				int32_t iconWidth = 8;
+				uint8_t const* graphic = isFolder ? deluge::hid::display::OLED::folderIcon : fileIcon;
+				canvas.drawGraphicMultiLine(graphic, iconStartX, yPixel + 0, iconWidth);
+				if (!isFolder && fileIconPt2 && fileIconPt2Width) {
+					canvas.drawGraphicMultiLine(fileIconPt2, iconStartX + iconWidth, yPixel + 0, fileIconPt2Width);
 				}
-			}
-			else {
-				canvas.drawString(std::string_view{displayName, static_cast<size_t>(displayStringLength)}, textStartX,
-				                  yPixel, kTextSpacingX, kTextSpacingY);
-			}
 
-			yPixel += kTextSpacingY;
+				// Draw filename
+				char finalChar = isFolder ? 0 : '.';
+				char const* finalCharAddress = strrchr(displayName, finalChar);
+				if (!finalCharAddress) { // Shouldn't happen... or maybe for in-memory presets?
+					finalChar = 0;
+					finalCharAddress = strrchr(displayName, finalChar);
+				}
+
+				int32_t displayStringLength = (uint32_t)finalCharAddress - (uint32_t)displayName;
+
+				if (isSelectedIndex) {
+					drawTextForOLEDEditing(textStartX, OLED_MAIN_WIDTH_PIXELS, yPixel, maxChars, canvas);
+					if (!enteredTextEditPos) {
+						deluge::hid::display::OLED::setupSideScroller(0, enteredText.get(), textStartX,
+							  OLED_MAIN_WIDTH_PIXELS, yPixel, yPixel + 8,
+							  kTextSpacingX, kTextSpacingY, true);
+					}
+				}
+				else {
+					canvas.drawString(std::string_view{displayName, static_cast<size_t>(displayStringLength)}, textStartX,
+					                  yPixel, kTextSpacingX, kTextSpacingY);
+				}
+
+				yPixel += kTextSpacingY;
+			}
+		}
+		// Otherwise show all files
+		else {
+			for (o = 0; o < OLED_HEIGHT_CHARS - 1; o++) {
+				int32_t i = o + scrollPosVertical;
+				if (i >= fileItems.getNumElements()) {
+					break;
+				}
+				FileItem* thisFile = (FileItem*)fileItems.getElementAddress(i);
+				isFolder = thisFile->isFolder;
+				displayName = thisFile->filename.get();
+				isSelectedIndex = (i == fileIndexSelected);
+
+				// Draw graphic
+				int32_t iconWidth = 8;
+				uint8_t const* graphic = isFolder ? deluge::hid::display::OLED::folderIcon : fileIcon;
+				canvas.drawGraphicMultiLine(graphic, iconStartX, yPixel + 0, iconWidth);
+				if (!isFolder && fileIconPt2 && fileIconPt2Width) {
+					canvas.drawGraphicMultiLine(fileIconPt2, iconStartX + iconWidth, yPixel + 0, fileIconPt2Width);
+				}
+
+				// Draw filename
+				char finalChar = isFolder ? 0 : '.';
+				char const* finalCharAddress = strrchr(displayName, finalChar);
+				if (!finalCharAddress) { // Shouldn't happen... or maybe for in-memory presets?
+					finalChar = 0;
+					finalCharAddress = strrchr(displayName, finalChar);
+				}
+
+				int32_t displayStringLength = (uint32_t)finalCharAddress - (uint32_t)displayName;
+
+				if (isSelectedIndex) {
+					drawTextForOLEDEditing(textStartX, OLED_MAIN_WIDTH_PIXELS, yPixel, maxChars, canvas);
+					if (!enteredTextEditPos) {
+						deluge::hid::display::OLED::setupSideScroller(0, enteredText.get(), textStartX,
+							  OLED_MAIN_WIDTH_PIXELS, yPixel, yPixel + 8,
+							  kTextSpacingX, kTextSpacingY, true);
+					}
+				}
+				else {
+					canvas.drawString(std::string_view{displayName, static_cast<size_t>(displayStringLength)}, textStartX,
+					                  yPixel, kTextSpacingX, kTextSpacingY);
+				}
+
+				yPixel += kTextSpacingY;
+			}
 		}
 	}
 }
@@ -1565,6 +1655,13 @@ ActionResult Browser::buttonAction(deluge::hid::Button b, bool on, bool inCardRo
 	// Back button
 	else if (b == BACK) {
 		if (on && !currentUIMode) {
+			// Fuzzy filter mode: BACK button acts as backspace
+			if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+				filterText.shorten(filterText.getLength() - 1);
+				updateFuzzyFilterIndices();
+				D_PRINTLN("FuzzyFilter: backspace (BACK button), new filterText='%s'", filterText.get());
+				return ActionResult::DEALT_WITH;
+			}
 			return backButtonAction();
 		}
 	}
@@ -1576,7 +1673,7 @@ ActionResult Browser::buttonAction(deluge::hid::Button b, bool on, bool inCardRo
 }
 
 ActionResult Browser::padAction(int32_t x, int32_t y, int32_t on) {
-
+	ActionResult result;
 	if (favouritesVisible && y == favouriteRow && on) {
 		if (sdRoutineLock) {
 			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
@@ -1610,18 +1707,46 @@ ActionResult Browser::padAction(int32_t x, int32_t y, int32_t on) {
 		}
 		return ActionResult::DEALT_WITH;
 	}
-	else if (favouritesVisible && banksVisible && y == favouriteBankRow && on) {
-		if (sdRoutineLock) {
-			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
-		}
-		favouritesManager.selectFavouritesBank(x);
-		favouritesChanged();
-		return ActionResult::DEALT_WITH;
-	}
 	else {
-		return QwertyUI::padAction(x, y, on);
+		result = QwertyUI::padAction(x, y, on);
+		// After QWERTY key press, update fuzzy filter and print indices if in fuzzy mode
+		// Only do this for normal keypresses (not backspace/enter/other pads)
+		if (isFuzzyFilterMode() && x >= 3 && x < 14 && y >= kQwertyHomeRow - 2 && y <= kQwertyHomeRow + 2 && on) {
+			D_PRINTLN("padAction: updating fuzzy filter for key press at x=%d y=%d", x, y);
+			// Get the character that was just typed from the keyboard layout
+			char c = keyboardChars[util::to_underlying(FlashStorage::keyboardLayout)][kQwertyHomeRow - y + 2][x - 3];
+			if (c) {
+				// Append the new character to filterText
+				char temp[2] = {c, 0}; // Null-terminated string
+				if (filterText.isEmpty()) {
+					filterText.set(temp);
+				} else {
+					filterText.concatenate(temp);
+				}
+				updateFuzzyFilterIndices();
+				D_PRINT("FuzzyFilter: filterText='%s' indices=", filterText.get());
+				for (int32_t i = 0; i < filteredIndices.getNumElements(); ++i) {
+					int32_t idx = *(int32_t*)filteredIndices.getElementAddress(i);
+					D_PRINT("%d ", idx);
+				}
+				D_PRINTLN("");
+			}
+		}
+		// Handle backspace for filter text
+		else if (isFuzzyFilterMode() && x == 0 && y == 6 && on) { // Backspace pad
+			if (!filterText.isEmpty()) {
+				filterText.shorten(filterText.getLength() - 1);
+				updateFuzzyFilterIndices();
+				D_PRINT("FuzzyFilter: backspace, new filterText='%s' indices=", filterText.get());
+				for (int32_t i = 0; i < filteredIndices.getNumElements(); ++i) {
+					int32_t idx = *(int32_t*)filteredIndices.getElementAddress(i);
+					D_PRINT("%d ", idx);
+				}
+				D_PRINTLN("");
+			}
+		}
+		return result;
 	}
-	return ActionResult::DEALT_WITH;
 }
 
 void Browser::favouritesChanged() {
@@ -1900,3 +2025,105 @@ void Browser::sortFileItems() {
 		}
 	}
 }
+
+void Browser::updateFuzzyFilterIndices() {
+    D_PRINTLN("updateFuzzyFilterIndices: filterText='%s' numFiles=%d mode=%d",
+              filterText.get(), fileItems.getNumElements(), isFuzzyFilterMode());
+
+    // Debug current state
+    D_PRINTLN("Current state: fileIndexSelected=%d scrollPosVertical=%d",
+              fileIndexSelected, scrollPosVertical);
+
+    filteredIndices.empty();
+    if (!isFuzzyFilterMode()) {
+        D_PRINTLN("Not in fuzzy filter mode, returning");
+        return;
+    }
+
+    int32_t numFiles = fileItems.getNumElements();
+    if (numFiles < 0 || numFiles > 10000) {
+        D_PRINTLN("WARNING: numFiles out of bounds: %d", numFiles);
+        return;
+    }
+    if (filterText.isEmpty()) {
+        D_PRINTLN("Filter text is empty, showing all items");
+        // Show all items
+        for (int32_t i = 0; i < numFiles; ++i) {
+            int32_t idx = i;
+            filteredIndices.insertAtIndex(filteredIndices.getNumElements());
+            *(int32_t*)filteredIndices.getElementAddress(filteredIndices.getNumElements() - 1) = idx;
+        }
+        D_PRINTLN("Added %d items to filtered indices", filteredIndices.getNumElements());
+        return;
+    }
+
+    // Fuzzy filter: case-insensitive substring match
+    const char* filterStr = filterText.get();
+    D_PRINTLN("Searching for '%s' in %d files", filterStr, numFiles);
+
+    // Debug first few filenames, with bounds check
+    int32_t numToShow = (numFiles < 5) ? numFiles : 5;
+    if (numToShow > 0) {
+        for (int32_t i = 0; i < numToShow; ++i) {
+            FileItem* fileItem = (FileItem*)fileItems.getElementAddress(i);
+            D_PRINTLN("Sample file %d: '%s'", i, fileItem->displayName);
+        }
+    } else {
+        D_PRINTLN("No files to show in debug sample loop");
+    }
+
+    for (int32_t i = 0; i < numFiles; ++i) {
+        FileItem* fileItem = (FileItem*)fileItems.getElementAddress(i);
+        const char* fileName = fileItem->displayName;
+
+        // Check if filter text is a substring of the filename (case-insensitive)
+        const char* match = strcasestr(fileName, filterStr);
+        if (match != nullptr) {
+            int32_t idx = i;
+            filteredIndices.insertAtIndex(filteredIndices.getNumElements());
+            *(int32_t*)filteredIndices.getElementAddress(filteredIndices.getNumElements() - 1) = idx;
+            D_PRINTLN("Match found at index %d: '%s' (matched at '%s')", i, fileName, match);
+        }
+    }
+    int32_t numMatches = filteredIndices.getNumElements();
+    if (numMatches < 0 || numMatches > 10000) {
+        D_PRINTLN("WARNING: numMatches out of bounds: %d", numMatches);
+        return;
+    }
+    D_PRINTLN("Found %d matches", numMatches);
+
+    // Clamp scrollPosVertical to valid range in fuzzy filter mode
+    if (isFuzzyFilterMode() && !filterText.isEmpty()) {
+        if (scrollPosVertical >= filteredIndices.getNumElements()) {
+            scrollPosVertical = filteredIndices.getNumElements() - 1;
+            if (scrollPosVertical < 0) scrollPosVertical = 0;
+        }
+        // Always reset scroll to top when filter changes and there are matches
+        if (filteredIndices.getNumElements() > 0) {
+            scrollPosVertical = 0;
+        }
+    }
+
+    // Debug first few matches, with bounds check
+    numToShow = (numMatches < 5) ? numMatches : 5;
+    if (numToShow > 0) {
+        for (int32_t i = 0; i < numToShow; ++i) {
+            int32_t idx = *(int32_t*)filteredIndices.getElementAddress(i);
+            if (idx < 0 || idx >= numFiles) {
+                D_PRINTLN("WARNING: filtered index %d out of bounds (value=%d)", i, idx);
+                continue;
+            }
+            FileItem* fileItem = (FileItem*)fileItems.getElementAddress(idx);
+            D_PRINTLN("Match %d: index=%d name='%s'", i, idx, fileItem->displayName);
+        }
+    } else {
+        D_PRINTLN("No matches to show in debug match loop");
+    }
+}
+
+void Browser::clearFilterText() {
+    D_PRINTLN("clearFilterText: clearing filter text '%s'", filterText.get());
+    filterText.clear();
+    updateFuzzyFilterIndices();
+}
+

@@ -24,6 +24,8 @@
 #include "model/favourite/favourite_manager.h"
 #include "storage/file_item.h"
 #include "util/container/array/c_string_array.h"
+#include "util/container/array/resizeable_array.h"
+#include "util/functions.h"
 
 extern "C" {
 #include "fatfs/ff.h"
@@ -56,7 +58,7 @@ struct Slot {
 #define CATALOG_SEARCH_RIGHT 1
 #define CATALOG_SEARCH_BOTH 2
 
-#define FILE_ITEMS_MAX_NUM_ELEMENTS 20
+#define FILE_ITEMS_MAX_NUM_ELEMENTS 200
 #define FILE_ITEMS_MAX_NUM_ELEMENTS_FOR_NAVIGATION 20 // It "should" be able to be way less than this.
 
 extern char const* allowedFileExtensionsXML[];
@@ -108,6 +110,11 @@ public:
 		return true;
 	}
 
+	// Fuzzy filter state (for synth/kit/sample browsing only)
+	String filterText;
+	ResizeableArray filteredIndices{sizeof(int32_t)}; // Indices of fileItems matching filter
+	bool filterActive; // True if filter is active (non-empty and in correct mode)
+
 protected:
 	Error setEnteredTextFromCurrentFilename();
 	Error goUpOneDirectoryLevel();
@@ -116,8 +123,8 @@ protected:
 	bool predictExtendedText() override;
 	void goIntoDeleteFileContextMenu();
 	ActionResult mainButtonAction(bool on);
-	virtual void exitAction();
 	virtual ActionResult backButtonAction();
+	virtual void exitAction();
 	virtual void folderContentsReady(int32_t entryDirection) {}
 	virtual void currentFileChanged(int32_t movementDirection) {}
 	void displayText(bool blinkImmediately = false) override;
@@ -128,6 +135,7 @@ protected:
 	                                       Availability availabilityRequirement = Availability::ANY,
 	                                       int32_t newCatalogSearchDirection = CATALOG_SEARCH_RIGHT);
 	void favouritesChanged();
+	void clearFilterText();
 
 	static int32_t fileIndexSelected; // If -1, we have not selected any real file/folder. Maybe there are no files, or
 	                                  // maybe we're typing a new name.
@@ -144,7 +152,7 @@ protected:
 	int32_t fileIconPt2Width;
 
 	// 7Seg Only
-	static int8_t numberEditPos; // -1 is default
+	static int8_t numberEditPos;
 	static NumericLayerScrollingText* scrollingText;
 	bool shouldWrapFolderContents; // As in, wrap around at the end.
 
@@ -153,6 +161,20 @@ protected:
 	// filePrefix is SONG/SYNT/SAMP etc., signifying the portion of the filesystem you're in
 	char const* filePrefix;
 	bool shouldInterpretNoteNamesForThisBrowser;
+
+	// Returns true if fuzzy filtering should be active (synth, kit, or sample browsing)
+	bool isFuzzyFilterMode() const {
+		// SYNTH and KIT are always fuzzy filter modes
+		if (outputTypeToLoad == OutputType::SYNTH || outputTypeToLoad == OutputType::KIT)
+			return true;
+		// For samples, outputTypeToLoad is NONE, but only enable in SAMPLES directory
+		if (outputTypeToLoad == OutputType::NONE && currentDir.getLength() >= 7 &&
+			!memcasecmp(currentDir.get(), "SAMPLES", 7))
+			return true;
+		return false;
+	}
+
+	void updateFuzzyFilterIndices();
 };
 
 inline void printInstrumentFileList(const char* where) {
