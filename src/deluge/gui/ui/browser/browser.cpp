@@ -37,9 +37,13 @@
 #include "storage/storage_manager.h"
 #include "util/functions.h"
 #include "util/try.h"
+#include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cstring>
 #include <new>
+#include <string>
+#include <vector>
 
 using namespace deluge;
 
@@ -47,6 +51,8 @@ String Browser::currentDir{};
 bool Browser::qwertyVisible;
 
 CStringArray Browser::fileItems{sizeof(FileItem)};
+std::vector<int32_t> Browser::visibleFileIndices{};
+bool Browser::filterActive = false;
 int32_t Browser::scrollPosVertical;
 int32_t Browser::fileIndexSelected;
 int32_t Browser::numCharsInPrefix;
@@ -68,6 +74,141 @@ int8_t Browser::numberEditPos;
 NumericLayerScrollingText* Browser::scrollingText;
 
 char const* allowedFileExtensionsXML[] = {"XML", "Json", NULL};
+
+void Browser::rebuildVisibleFileList() {
+	int32_t total = fileItems.getNumElements();
+	int32_t previousRawSelection = visibleIndexToRaw(fileIndexSelected);
+	visibleFileIndices.clear();
+	visibleFileIndices.reserve(total);
+
+	std::string queryUpper;
+	bool allowFiltering = !mayDefaultToBrandNewNameOnEntry;
+	if (allowFiltering && enteredTextEditPos > 0 && !enteredText.isEmpty()) {
+		char const* textChars = enteredText.get();
+		queryUpper.reserve(static_cast<size_t>(enteredTextEditPos));
+		for (int32_t i = 0; i < enteredTextEditPos && textChars[i]; ++i) {
+			queryUpper.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(textChars[i]))));
+		}
+	}
+
+	std::vector<int32_t> prefixMatches;
+	std::vector<int32_t> substringMatches;
+	if (!queryUpper.empty()) {
+		prefixMatches.reserve(total);
+		substringMatches.reserve(total);
+		for (int32_t i = 0; i < total; ++i) {
+			FileItem* item = (FileItem*)fileItems.getElementAddress(i);
+			if (!item) {
+				continue;
+			}
+			char const* displayName = item->displayName ? item->displayName : item->filename.get();
+			if (!displayName) {
+				continue;
+			}
+
+			std::string nameUpper;
+			size_t displayLength = strlen(displayName);
+			nameUpper.reserve(displayLength);
+			for (size_t c = 0; c < displayLength; ++c) {
+				nameUpper.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(displayName[c]))));
+			}
+
+			if (nameUpper.rfind(queryUpper, 0) == 0) {
+				prefixMatches.push_back(i);
+			}
+			else if (nameUpper.find(queryUpper) != std::string::npos) {
+				substringMatches.push_back(i);
+			}
+		}
+	}
+
+	if (!queryUpper.empty()) {
+		visibleFileIndices.insert(visibleFileIndices.end(), prefixMatches.begin(), prefixMatches.end());
+		visibleFileIndices.insert(visibleFileIndices.end(), substringMatches.begin(), substringMatches.end());
+		filterActive = true;
+	}
+	else {
+		filterActive = false;
+		for (int32_t i = 0; i < total; ++i) {
+			visibleFileIndices.push_back(i);
+		}
+	}
+
+	int32_t visibleCount = getVisibleFileCount();
+	if (visibleCount == 0) {
+		fileIndexSelected = -1;
+		scrollPosVertical = 0;
+	}
+	else {
+		if (filterActive) {
+			int32_t preservedVisibleIndex = rawIndexToVisible(previousRawSelection);
+			if (preservedVisibleIndex >= 0) {
+				fileIndexSelected = preservedVisibleIndex;
+			}
+			else {
+				fileIndexSelected = 0;
+			}
+		}
+		else {
+			if (fileIndexSelected >= visibleCount || fileIndexSelected < 0) {
+				fileIndexSelected = std::clamp<int32_t>(fileIndexSelected, 0, visibleCount - 1);
+			}
+		}
+
+		if (scrollPosVertical >= visibleCount) {
+			scrollPosVertical = visibleCount - 1;
+		}
+		if (scrollPosVertical < 0) {
+			scrollPosVertical = 0;
+		}
+		int32_t linesVisible = display->getNumBrowserAndMenuLines();
+		if (linesVisible <= 0) {
+			linesVisible = NUM_FILES_ON_SCREEN;
+		}
+		if (fileIndexSelected >= 0) {
+			if (fileIndexSelected < scrollPosVertical) {
+				scrollPosVertical = fileIndexSelected;
+			}
+			int32_t maxTop = fileIndexSelected - (linesVisible - 1);
+			if (maxTop < 0) {
+				maxTop = 0;
+			}
+			if (scrollPosVertical > maxTop) {
+				scrollPosVertical = maxTop;
+			}
+		}
+	}
+
+	arrivedAtFileByTyping = filterActive;
+}
+
+int32_t Browser::getVisibleFileCount() {
+	return static_cast<int32_t>(visibleFileIndices.size());
+}
+
+int32_t Browser::visibleIndexToRaw(int32_t visibleIndex) {
+	if (visibleIndex < 0 || visibleIndex >= static_cast<int32_t>(visibleFileIndices.size())) {
+		return -1;
+	}
+	return visibleFileIndices[visibleIndex];
+}
+
+int32_t Browser::rawIndexToVisible(int32_t rawIndex) {
+	for (int32_t i = 0; i < static_cast<int32_t>(visibleFileIndices.size()); ++i) {
+		if (visibleFileIndices[i] == rawIndex) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+FileItem* Browser::getVisibleFileItem(int32_t visibleIndex) {
+	int32_t rawIndex = visibleIndexToRaw(visibleIndex);
+	if (rawIndex < 0) {
+		return nullptr;
+	}
+	return (FileItem*)fileItems.getElementAddress(rawIndex);
+}
 
 Browser::Browser() {
 	fileIcon = deluge::hid::display::OLED::songIcon;
@@ -150,6 +291,11 @@ void Browser::emptyFileItems() {
 	fileItems.empty();
 
 	AudioEngine::logAction("emptyFileItems 3");
+
+	visibleFileIndices.clear();
+	filterActive = false;
+	fileIndexSelected = -1;
+	scrollPosVertical = 0;
 }
 
 void Browser::deleteSomeFileItems(int32_t startAt, int32_t stopAt) {
@@ -507,6 +653,8 @@ Error Browser::setFileByFullPath(OutputType outputType, char const* fullPath) {
 		return Error::FILE_NOT_FOUND;
 	}
 
+	rebuildVisibleFileList();
+
 	// Update the Display
 	scrollPosVertical = fileIndexSelected;
 	setEnteredTextFromCurrentFilename();
@@ -584,6 +732,8 @@ tryReadingItems:
 			}
 		}
 	}
+
+	rebuildVisibleFileList();
 
 	return Error::NONE;
 }
@@ -858,6 +1008,8 @@ useNonExistentFileName:     // Normally this will get skipped over - if we found
 	scrollPosVertical = 0;
 
 everythingFinalized:
+	rebuildVisibleFileList();
+
 	if (!loading_delayed_during_fast_scroll) {
 		// Only call if we're not in fast scroll mode to avoid updating the screen preview
 		folderContentsReady(direction);
@@ -980,6 +1132,45 @@ void Browser::selectEncoderAction(int8_t offset) {
 
 	shouldInterpretNoteNames = shouldInterpretNoteNamesForThisBrowser;
 	octaveStartsFromA = false;
+
+	if (filterActive) {
+		int32_t visibleCount = getVisibleFileCount();
+		if (visibleCount == 0) {
+			displayText();
+			return;
+		}
+		int32_t newIndex = fileIndexSelected;
+		if (newIndex < 0) {
+			newIndex = offset >= 0 ? 0 : visibleCount - 1;
+		}
+		else {
+			newIndex += offset;
+		}
+		newIndex = std::clamp<int32_t>(newIndex, 0, visibleCount - 1);
+		if (newIndex == fileIndexSelected) {
+			displayText();
+			return;
+		}
+		fileIndexSelected = newIndex;
+		int32_t linesVisible = display->getNumBrowserAndMenuLines();
+		if (linesVisible <= 0) {
+			linesVisible = NUM_FILES_ON_SCREEN;
+		}
+		if (fileIndexSelected < scrollPosVertical) {
+			scrollPosVertical = fileIndexSelected;
+		}
+		int32_t bottomIndex = scrollPosVertical + linesVisible - 1;
+		if (fileIndexSelected > bottomIndex) {
+			scrollPosVertical = fileIndexSelected - (linesVisible - 1);
+			if (scrollPosVertical < 0) {
+				scrollPosVertical = 0;
+			}
+		}
+		displayText();
+		currentFileChanged(offset);
+		loading_delayed_during_fast_scroll = false;
+		return;
+	}
 
 	int32_t new_file_index = calculateNewFileIndex(offset);
 
@@ -1338,7 +1529,8 @@ void Browser::updateUIState() {
 	}
 	else {
 		// For folders with fewer items than display slots, always start from index 0
-		if (fileItems.getNumElements() <= NUM_FILES_ON_SCREEN) {
+		int32_t visibleCount = getVisibleFileCount();
+		if (visibleCount <= NUM_FILES_ON_SCREEN) {
 			scrollPosVertical = 0;
 		}
 		else {
@@ -1346,7 +1538,7 @@ void Browser::updateUIState() {
 			if (scrollPosVertical < 0 && numFileItemsDeletedAtStart == 0) {
 				scrollPosVertical = 0;
 			}
-			else if (fileIndexSelected == fileItems.getNumElements() - 1 && numFileItemsDeletedAtEnd == 0) {
+			else if (fileIndexSelected == visibleCount - 1 && numFileItemsDeletedAtEnd == 0) {
 				scrollPosVertical--;
 			}
 		}
@@ -1381,6 +1573,17 @@ void Browser::updateUIState() {
 }
 
 bool Browser::predictExtendedText() {
+	if (!mayDefaultToBrandNewNameOnEntry) {
+		int32_t previousRawSelection = visibleIndexToRaw(fileIndexSelected);
+		rebuildVisibleFileList();
+		int32_t newRawSelection = visibleIndexToRaw(fileIndexSelected);
+		if (filterActive && newRawSelection >= 0 && newRawSelection != previousRawSelection) {
+			currentFileChanged(0);
+		}
+		displayText();
+		return true;
+	}
+
 	Error error;
 	arrivedAtFileByTyping = true;
 	shouldInterpretNoteNames = shouldInterpretNoteNamesForThisBrowser;
@@ -1498,7 +1701,8 @@ notFound:
 
 void Browser::currentFileDeleted() {
 	FileItem* currentFileItem = getCurrentFileItem();
-	if (!currentFileItem) {
+	int32_t rawIndex = visibleIndexToRaw(fileIndexSelected);
+	if (!currentFileItem || rawIndex < 0) {
 		return; // Shouldn't happen...
 	}
 	if (currentFileItem->instrument && !currentFileItem->instrumentAlreadyInSong) {
@@ -1506,10 +1710,11 @@ void Browser::currentFileDeleted() {
 	}
 	currentFileItem->~FileItem();
 
-	fileItems.deleteAtIndex(fileIndexSelected);
+	fileItems.deleteAtIndex(rawIndex);
 
-	if (fileIndexSelected == fileItems.getNumElements()) {
-		fileIndexSelected--; // It might go to -1 if no files left.
+	rebuildVisibleFileList();
+
+	if (fileIndexSelected < 0) {
 		enteredText.clear();
 		enteredTextEditPos = 0;
 	}
@@ -1534,12 +1739,20 @@ void Browser::renderOLED(deluge::hid::display::oled_canvas::Canvas& canvas) {
 
 	int32_t maxChars = (uint32_t)(OLED_MAIN_WIDTH_PIXELS - textStartX) / (uint32_t)kTextSpacingX;
 
+	int32_t visibleCount = getVisibleFileCount();
+	bool noResults = filterActive && visibleCount == 0;
+
 	bool isFolder = false;
 	bool isSelectedIndex = true;
 	char const* displayName;
 	int32_t o;
 
 	// If we're currently typing a filename which doesn't (yet?) have a file...
+	if (noResults) {
+		canvas.drawString("NO RESULTS", textStartX, yPixel, kTextSpacingX, kTextSpacingY);
+		return;
+	}
+
 	if (fileIndexSelected == -1) {
 		displayName = enteredText.get();
 		o = OLED_HEIGHT_CHARS; // Make sure below loop doesn't keep looping.
@@ -1549,16 +1762,19 @@ void Browser::renderOLED(deluge::hid::display::oled_canvas::Canvas& canvas) {
 	else {
 		for (o = 0; o < OLED_HEIGHT_CHARS - 1; o++) {
 			{
-				int32_t i = o + scrollPosVertical;
+				int32_t visibleIndex = o + scrollPosVertical;
 
-				if (i < 0 || i >= fileItems.getNumElements()) {
+				if (visibleIndex < 0 || visibleIndex >= visibleCount) {
 					break;
 				}
 
-				FileItem* thisFile = (FileItem*)fileItems.getElementAddress(i);
+				FileItem* thisFile = getVisibleFileItem(visibleIndex);
+				if (!thisFile) {
+					break;
+				}
 				isFolder = thisFile->isFolder;
 				displayName = thisFile->filename.get();
-				isSelectedIndex = (i == fileIndexSelected);
+				isSelectedIndex = (visibleIndex == fileIndexSelected);
 			}
 drawAFile:
 			// Draw graphic
@@ -1666,7 +1882,10 @@ void Browser::displayText(bool blinkImmediately) {
 		renderUIsForOled();
 	}
 	else {
-		if (arrivedAtFileByTyping || qwertyVisible) {
+		if (filterActive && getVisibleFileCount() == 0) {
+			display->setText("- - - -");
+		}
+		else if (arrivedAtFileByTyping || qwertyVisible) {
 			if (!arrivedAtFileByTyping) {
 				// This means a key has been hit while browsing
 				// to bring up the keyboard, so set position to -1
@@ -1711,7 +1930,7 @@ FileItem* Browser::getCurrentFileItem() {
 	if (fileIndexSelected == -1) {
 		return nullptr;
 	}
-	return (FileItem*)fileItems.getElementAddress(fileIndexSelected);
+	return getVisibleFileItem(fileIndexSelected);
 }
 
 // This and its individual contents are frequently overridden by child classes.

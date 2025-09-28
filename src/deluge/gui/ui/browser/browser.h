@@ -24,6 +24,7 @@
 #include "model/favourite/favourite_manager.h"
 #include "storage/file_item.h"
 #include "util/container/array/c_string_array.h"
+#include <vector>
 
 extern "C" {
 #include "fatfs/ff.h"
@@ -94,6 +95,8 @@ public:
 
 	static String currentDir;
 	static CStringArray fileItems;
+	static std::vector<int32_t> visibleFileIndices;
+	static bool filterActive;
 	static int32_t numFileItemsDeletedAtStart;
 	static int32_t numFileItemsDeletedAtEnd;
 	static char const* firstFileItemRemaining;
@@ -138,6 +141,11 @@ protected:
 	                                int32_t original_movement = 1);
 	Error reloadFromOneEnd(int32_t& new_file_index, int32_t search_direction);
 	void updateUIState();
+	void rebuildVisibleFileList();
+	static int32_t getVisibleFileCount();
+	static int32_t visibleIndexToRaw(int32_t visibleIndex);
+	static int32_t rawIndexToVisible(int32_t rawIndex);
+	static FileItem* getVisibleFileItem(int32_t visibleIndex);
 
 	static int32_t fileIndexSelected; // If -1, we have not selected any real file/folder. Maybe there are no files, or
 	                                  // maybe we're typing a new name.
