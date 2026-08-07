@@ -226,6 +226,9 @@ void TaskManager::blockTask(TaskID id) {
 }
 
 void TaskManager::runTask(TaskID id) {
+	// Nested runTask (via yield) must restore the caller's task identity
+	TaskID previousID = currentID;
+	bool previousCountThisTask = countThisTask;
 	countThisTask = true;
 	currentID = id;
 	auto* current_task = &list[currentID];
@@ -262,6 +265,9 @@ void TaskManager::runTask(TaskID id) {
 		}
 		lastFinishTime = timeNow;
 	}
+
+	currentID = previousID;
+	countThisTask = previousCountThisTask;
 }
 
 void TaskManager::runHighestPriTask() {

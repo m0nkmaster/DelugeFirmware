@@ -110,6 +110,10 @@ goToSleep:
     CPS  #ABT_MODE
     LDR  sp, =abt_stack_end
 
+/* UND_MODE                                                                  */
+    CPS  #UND_MODE
+    LDR  sp, =und_stack_end
+
 /* SYS_MODE                                                                  */
     CPS  #SYS_MODE
 

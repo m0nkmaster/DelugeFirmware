@@ -16,6 +16,7 @@
  */
 
 #include "gui/context_menu/clear_song.h"
+#include "definitions_cxx.hpp"
 #include "gui/l10n/l10n.h"
 #include "gui/views/view.h"
 #include "hid/display/display.h"
@@ -76,27 +77,47 @@ bool ClearSong::acceptCurrentOption() {
 		playbackHandler.endPlayback();
 	}
 
-	actionLogger.deleteAllLogs();
+	bool clocksActive = playbackHandler.isEitherClockActive();
 
-	nullifyUIs();
-	if (!playbackHandler.isEitherClockActive()) {
-		deleteOldSongBeforeLoadingNew();
+	// Build the replacement song before discarding the current one, so OOM leaves the old song intact
+	void* songMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(Song));
+	if (!songMemory) {
+		display->displayError(Error::INSUFFICIENT_RAM);
+		return false;
 	}
-	else {
+
+	Song* newSong = new (songMemory) Song();
+	Error error = newSong->paramManager.setupUnpatched();
+	if (error != Error::NONE) {
+		void* toDealloc = dynamic_cast<void*>(newSong);
+		newSong->~Song();
+		delugeDealloc(toDealloc);
+		display->displayError(error);
+		return false;
+	}
+
+	GlobalEffectable::initParams(&newSong->paramManager);
+	newSong->setupDefault();
+
+	// Commit: discard undo history and prepare for swap
+	actionLogger.deleteAllLogs();
+	nullifyUIs();
+
+	if (clocksActive) {
 		AudioEngine::songSwapAboutToHappen();
 	}
 
-	void* songMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(Song)); // TODO: error checking
-	preLoadedSong = new (songMemory) Song();
-	preLoadedSong->paramManager.setupUnpatched(); // TODO: error checking
-	GlobalEffectable::initParams(&preLoadedSong->paramManager);
-	preLoadedSong->setupDefault();
+	preLoadedSong = newSong;
 
 	Song* toDelete = currentSong;
+	if (!clocksActive) {
+		deleteOldSongBeforeLoadingNew();
+		toDelete = nullptr; // already deleted above
+	}
 
 	preLoadedSong->ensureAtLeastOneSessionClip(); // Will load a synth preset from SD card
 
-	playbackHandler.doSongSwap(playbackHandler.isEitherClockActive());
+	playbackHandler.doSongSwap(clocksActive);
 	if (toDelete) {
 		void* toDealloc = dynamic_cast<void*>(toDelete);
 		toDelete->~Song();

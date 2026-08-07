@@ -231,15 +231,26 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
 	}
 	NumericLayerScrollingText* newLayer = new (layerSpace) NumericLayerScrollingText(fixedDot);
 
-	newLayer->length = encodeText(newText, newLayer->text, false, {}, false);
+	// Truncate to encoded buffer capacity so encodeText cannot overflow text[256]
+	constexpr size_t kMaxScrollingChars = sizeof(newLayer->text);
+	char truncated[kMaxScrollingChars + 1];
+	size_t copyLen = 0;
+	while (copyLen < kMaxScrollingChars && newText[copyLen] != 0) {
+		truncated[copyLen] = newText[copyLen];
+		copyLen++;
+	}
+	truncated[copyLen] = 0;
+
+	int32_t encodedLength = encodeText(truncated, newLayer->text, false, {}, false);
+	newLayer->length = std::min<int32_t>(encodedLength, (int32_t)kMaxScrollingChars);
 
 	bool andAHalf;
-	int32_t startAtEncodedPos = getEncodedPosFromLeft(startAtTextPos, newText, &andAHalf);
+	int32_t startAtEncodedPos = getEncodedPosFromLeft(startAtTextPos, truncated, &andAHalf);
 
 	startAtEncodedPos = std::min(startAtEncodedPos, (int32_t)newLayer->length - 4);
 	startAtEncodedPos = std::max(startAtEncodedPos, 0_i32);
 
-	newLayer->currentPos = startAtEncodedPos;
+	newLayer->currentPos = (uint16_t)startAtEncodedPos;
 	newLayer->initialDelay = initialDelay;
 	newLayer->scrollsCount = count;
 

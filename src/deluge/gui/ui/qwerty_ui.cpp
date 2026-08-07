@@ -487,6 +487,17 @@ ActionResult QwertyUI::horizontalEncoderAction(int32_t offset) {
 
 	enteredTextEditPos += offset;
 
+	// Clamp to string bounds (encoder delta can overshoot)
+	if (enteredTextEditPos < 0) {
+		enteredTextEditPos = 0;
+	}
+	else {
+		int32_t length = enteredText.getLength();
+		if (enteredTextEditPos > length) {
+			enteredTextEditPos = length;
+		}
+	}
+
 doDisplayText:
 	displayText();
 

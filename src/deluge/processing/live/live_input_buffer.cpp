@@ -86,7 +86,7 @@ void LiveInputBuffer::giveInput(int32_t numSamples, uint32_t currentTime, OscTyp
 				difference = -difference;
 			}
 
-			int32_t percussiveness = ((uint64_t)difference * 262144 / angle) >> 1;
+			int32_t percussiveness = angle == 0 ? 0 : (((uint64_t)difference * 262144 / angle) >> 1);
 
 			percussiveness = getTanH<23>(percussiveness);
 

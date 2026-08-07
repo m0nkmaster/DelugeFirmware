@@ -140,7 +140,6 @@ extern uint32_t program_code_end;
 	return result;
 }
 
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
 #define MAX_POINTER_COUNT 4
 [[gnu::always_inline]] inline void printPointers(uint32_t addrSYSLR, uint32_t addrSYSSP, uint32_t addrUSRLR,
                                                  uint32_t addrUSRSP, bool hardFault) {
@@ -159,11 +158,13 @@ extern uint32_t program_code_end;
 	// Search for stack pointers before any printing
 	if (stackPointer != 0x00000000) {
 		stackPointer = stackPointer - (stackPointer % 4); // Align to 4 bytes
-		while (stackPointer <= (uint32_t)&program_stack_end) {
+		// program_stack_end is exclusive — scan strictly below it
+		while (stackPointer < (uint32_t)&program_stack_end) {
 			uint32_t stackValue = *((uint32_t*)stackPointer);
 
 			// Print any pointer that is pointing to code, different from the LRs and not the same as before
-			if (isCodePointer(stackValue) && stackValue != stackPointers[MIN(0, stackPointerCount - 1)]
+			if (isCodePointer(stackValue)
+			    && (stackPointerCount == 0 || stackValue != stackPointers[stackPointerCount - 1])
 			    && stackValue != addrUSRLR && stackValue != addrSYSLR) {
 				stackPointers[stackPointerCount] = stackValue;
 				++stackPointerCount;

@@ -516,7 +516,7 @@ void LivePitchShifter::hopEnd(int32_t phaseIncrement, LiveInputBuffer* liveInput
 					}
 					int32_t percHere =
 					    liveInputBuffer
-					        ->percBuffer[(uint32_t)(percPos - howFarBackSearched) & (kPercBufferReductionSize - 1)];
+					        ->percBuffer[(uint32_t)(percPos - howFarBackSearched) & (kInputPercBufferSize - 1)];
 					totalPerc += percHere;
 				}
 

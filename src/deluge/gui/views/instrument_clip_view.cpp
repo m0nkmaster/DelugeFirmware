@@ -3462,7 +3462,8 @@ void InstrumentClipView::displayProbability(uint8_t probability, bool prevBase) 
 }
 
 void InstrumentClipView::displayIterance(Iterance iterance) {
-	char buffer[(display->haveOLED()) ? 29 : 5];
+	// Non-OLED needs room for "CUSTOM" (6+1); OLED for longer labels
+	char buffer[(display->haveOLED()) ? 29 : 10];
 
 	// Iteration dependence
 	int32_t iterancePreset = iterance.toPresetIndex();
@@ -3494,7 +3495,8 @@ void InstrumentClipView::displayIterance(Iterance iterance) {
 }
 
 void InstrumentClipView::displayFill(uint8_t mode) {
-	char buffer[(display->haveOLED()) ? 29 : 5];
+	// Non-OLED needs room for "NOT FILL" (8+1)
+	char buffer[(display->haveOLED()) ? 29 : 10];
 
 	strcpy(buffer, getFillString(mode));
 

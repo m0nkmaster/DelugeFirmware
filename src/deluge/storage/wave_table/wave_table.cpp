@@ -106,8 +106,9 @@ void dft_r2c(ne10_fft_cpx_int32_t* __restrict__ out, int32_t const* __restrict__
 
 			int32_t sineDiff = sineValue2 - sineValue1;
 			int32_t cosDiff = cosValue2 - cosValue1;
-			int32_t sineValue = (sineValue1 << 16) + sineDiff * strength2;
-			int32_t cosValue = (cosValue1 << 16) + cosDiff * strength2;
+			// Cast through uint32_t: signed << of negative sine/cosine values is undefined.
+			int32_t sineValue = static_cast<int32_t>(static_cast<uint32_t>(sineValue1) << 16) + sineDiff * strength2;
+			int32_t cosValue = static_cast<int32_t>(static_cast<uint32_t>(cosValue1) << 16) + cosDiff * strength2;
 
 			sReal = multiply_accumulate_32x32_rshift32_rounded(
 			    sReal, inputValueReal, cosValue); // We lose one order of magnitude here, which is made up for below.
@@ -117,8 +118,8 @@ void dft_r2c(ne10_fft_cpx_int32_t* __restrict__ out, int32_t const* __restrict__
 			realReadPos++;
 		} while (realReadPos < stopAt);
 
-		out[i].r = sReal << 1; // Here we make up for the order of magnitude that was lost above.
-		out[i].i = sIm << 1;
+		out[i].r = static_cast<int32_t>(static_cast<uint32_t>(sReal) << 1); // Restore magnitude lost above.
+		out[i].i = static_cast<int32_t>(static_cast<uint32_t>(sIm) << 1);
 	}
 
 	/*
@@ -350,7 +351,10 @@ gotError5:
 	    smDeserializer.fileClusterBuffer; // This will get changed if we're converting an existing Sample in memory.
 	uint32_t bytesOverlappingFromLastCluster;
 
-#define MAGNITUDE_REDUCTION_FOR_FFT 12
+	// Unscaled fixed-point FFT needs one accumulation headroom bit per stage (log2 N).
+	// Historical floor was 12; max supported size is 2^13 and needs 13.
+	constexpr int32_t kMinMagnitudeReductionForFFT = 12;
+	int32_t magnitudeReductionForFFT = std::max(kMinMagnitudeReductionForFFT, initialBandCycleMagnitude);
 
 	uint32_t bitMask = 0xFFFFFFFF << ((4 - byteDepth) * 8);
 
@@ -433,8 +437,8 @@ gotError5:
 			}                                                                                                          \
 		}                                                                                                              \
 		*(cycleBufferDestination++) =                                                                                  \
-		    value32 >> MAGNITUDE_REDUCTION_FOR_FFT; /* Store full 32-bit value in cycle buffer (reduced in magnitude   \
-		                                               for FFT). */                                                    \
+		    value32 >> magnitudeReductionForFFT; /* Store full 32-bit value in cycle buffer (reduced in magnitude     \
+		                                             for FFT). */                                                      \
 		*(initialBandWritePos++) = value32 >> 16;   /* Bands only store 16-bit data. */                                \
 	}
 
@@ -719,7 +723,7 @@ transformBandToTimeDomain:
 			for (int32_t i = 0; i < band->cycleSizeNoDuplicates; i++) {
 				destination[i] = signed_saturate<32 - 16>(
 				    currentCycleInt32[i]
-				    >> (16 - MAGNITUDE_REDUCTION_FOR_FFT
+				    >> (16 - magnitudeReductionForFFT
 				        + initialBandCycleMagnitude)); // This saturation is possibly a temporary solution...
 			}
 
@@ -1073,7 +1077,8 @@ uint32_t WaveTable::render(int32_t* __restrict__ outputBuffer, int32_t numSample
 
 		int32_t lshiftAmountToGetCrossCycleStrength =
 		    32 + numCycleTransitionsNextPowerOf2Magnitude - NUM_BITS_IN_WAVE_INDEX_SCALED_INPUT; // Always positive.
-		int32_t crossCycleStrength2Increment = waveIndexIncrementScaled << lshiftAmountToGetCrossCycleStrength;
+		int32_t crossCycleStrength2Increment = static_cast<int32_t>(
+		    static_cast<uint32_t>(waveIndexIncrementScaled) << lshiftAmountToGetCrossCycleStrength);
 
 startRenderingACycle:
 		int32_t numSamplesThisCycle = numSamplesLeftToDo;

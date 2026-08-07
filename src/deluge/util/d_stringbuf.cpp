@@ -6,11 +6,23 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow="
 void StringBuf::append(std::string_view str) {
-
-	::strncat(buf_, str.data(), std::min(capacity_ - size() - 1, str.length()));
+	size_t remaining = spaceRemaining();
+	if (remaining == 0 || str.empty()) {
+		return;
+	}
+	::strncat(buf_, str.data(), std::min(remaining, str.length()));
 }
 #pragma GCC diagnostic pop
 // NOLINTEND
+
+void StringBuf::append(char c) {
+	size_t s = size();
+	if (s + 1 >= capacity_) {
+		return;
+	}
+	buf_[s] = c;
+	buf_[s + 1] = '\0';
+}
 
 /**********************************************************************************************************************\
  * String formatting and parsing functions

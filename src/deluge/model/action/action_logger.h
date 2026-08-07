@@ -56,12 +56,12 @@ public:
 	bool undoJustOneConsequencePerNoteRow(ModelStack* modelStack);
 	bool allowedToDoReversion();
 	void notifyClipRecordingAborted(Clip* clip);
+	void deleteLastActionIfEmpty();
 
 	Action* firstAction[2];
 
 private:
 	void revertAction(Action* action, bool updateVisually, bool doNavigation, TimeType time);
-	void deleteLastActionIfEmpty();
 	void deleteLastAction();
 };
 

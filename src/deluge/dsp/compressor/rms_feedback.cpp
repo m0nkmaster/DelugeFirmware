@@ -141,19 +141,24 @@ float RMSFeedbackCompressor::runEnvelope(float current, float desired, float num
 // output range is 0-21 (2^31)
 // dac clipping is at 16
 float RMSFeedbackCompressor::calcRMS(std::span<StereoSample> buffer) {
-	q31_t sum = 0;
-	q31_t offset = 0; // to remove dc offset
+	int64_t sum = 0;
 	float lastMean = mean;
 
 	for (StereoSample sample : buffer) {
 		q31_t l = sample.l - hpfL.doFilter(sample.l, hpfA_);
 		q31_t r = sample.r - hpfR.doFilter(sample.r, hpfA_);
-		q31_t s = std::max(std::abs(l), std::abs(r));
-		sum += multiply_32x32_rshift32(s, s);
+		int64_t absL = l < 0 ? -static_cast<int64_t>(l) : l;
+		int64_t absR = r < 0 ? -static_cast<int64_t>(r) : r;
+		int64_t s = std::max(absL, absR);
+		sum += (s * s) >> 32;
+	}
+
+	if (sum > INT32_MAX) {
+		sum = INT32_MAX;
 	}
 
 	float ns = buffer.size() * 2;
-	mean = (float(sum) / ONE_Q31f) / ns;
+	mean = (static_cast<float>(sum) / ONE_Q31f) / ns;
 	// warning this is not good math but it's pretty close and way cheaper than doing it properly
 	// good math would use a long FIR, this is a one pole IIR instead
 	// the more samples we have, the more weight we put on the current mean to avoid response slowing down
