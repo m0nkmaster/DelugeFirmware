@@ -198,13 +198,10 @@ void resetprg(void) {
 	relocateSDRAMSection(&__sdram_data_start, &__sdram_data_end);
 	relocateSDRAMSection(&__sdram_rodata_start, &__sdram_rodata_end);
 
-	// Relocated through D-cache while I/D caches are already on. Clean D so SDRAM
-	// has the bytes, DSB so writeback is visible, invalidate L2 (data locked), then
-	// L1 I (includes DSB/ISB).
-	L1_D_CacheWritebackAll();
-	__asm__ volatile("dsb" ::: "memory");
-	L2CacheFlushAll();
-	L1_I_CacheFlushAll();
+	// NOTE: Do not call L2CacheFlushAll()/full cache maintenance here with IRQs
+	// already enabled (above). L2 invalidate-by-way is not interrupt-safe and was
+	// observed to prevent boot. .sdram_text is currently empty; if executable
+	// SDRAM code returns, do D-clean + I-invalidate with IRQs/FIQs masked.
 
 	__libc_init_array();
 	// located in OSLikeStuff/main.c
