@@ -270,6 +270,8 @@ extern "C" void hostedDeviceConfigured(int32_t ip, int32_t midiDeviceNum) {
 
 extern "C" void hostedDeviceDetached(int32_t ip, int32_t midiDeviceNum) {
 
+	// Not one of ours (e.g. hmidi_detach() didn't find it) - indexing connectedUSBMIDIDevices with it would write out
+	// of bounds
 	if (midiDeviceNum < 0 || midiDeviceNum >= MAX_NUM_USB_MIDI_DEVICES) {
 #if ALPHA_OR_BETA_VERSION
 		FREEZE_WITH_ERROR("E367");
@@ -413,6 +415,13 @@ void writeDeviceReferenceToFlash(GlobalMIDICommand whichCommand, uint8_t* memory
 	if (midiEngine.globalMIDICommands[util::to_underlying(whichCommand)].cable) {
 		midiEngine.globalMIDICommands[util::to_underlying(whichCommand)].cable->writeToFlash(memory);
 	}
+}
+
+// Read-only counterpart of the MIDI-follow device references that lived in flash before c1.3 moved those settings
+// into MIDIFollow.XML. Only used by the one-time migration in FlashStorage::readSettings() - we never write these
+// bytes again.
+void readMidiFollowDeviceReferenceFromFlash(MIDIFollowChannelType whichType, uint8_t const* memory) {
+	midiEngine.midiFollowChannelType[util::to_underlying(whichType)].cable = readCableFromFlash(memory);
 }
 
 void writeDevicesToFile() {
@@ -560,8 +569,8 @@ void readAHostedDeviceFromFile(Deserializer& reader) {
 	MIDICableUSBHosted* device = nullptr;
 
 	String name;
-	uint16_t vendorId;
-	uint16_t productId;
+	uint16_t vendorId = 0;
+	uint16_t productId = 0;
 
 	char const* tagName;
 	while (*(tagName = reader.readNextTagOrAttributeName())) {
@@ -647,6 +656,19 @@ checkDevice:
 
 			if (device) {
 				device->is_relative = reader.readTagOrAttributeValueInt();
+			}
+		}
+		else if (strcmp(tagName, "midi_thru") == 0) {
+			// this is actually not much duplicated code, just checks for nulls and then an attempt to create a device
+			if (device == nullptr) {
+				if (!name.isEmpty() || vendorId != 0) {
+					device = getOrCreateHostedMIDIDeviceFromDetails(&name, vendorId,
+					                                                productId); // Will return NULL if error.
+				}
+			}
+
+			if (device != nullptr) {
+				device->midi_thru = reader.readTagOrAttributeValueInt() != 0;
 			}
 		}
 
@@ -735,7 +757,7 @@ ConnectedUSBMIDIDevice::ConnectedUSBMIDIDevice() {
 	sq = 0;
 	canHaveMIDISent = 0;
 	numBytesReceived = 0;
-	memset(receiveData, 0, 64);
+	memset(receiveData, 0, sizeof(receiveData));
 	memset(dataSendingNow, 0, MIDI_SEND_BUFFER_LEN_INNER * 4);
 	numBytesSendingNow = 0;
 	memset(sendDataRingBuf, 0, MIDI_SEND_BUFFER_LEN_RING);

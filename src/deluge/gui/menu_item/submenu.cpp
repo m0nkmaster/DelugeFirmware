@@ -192,11 +192,15 @@ bool Submenu::shouldForwardButtons() {
 
 MenuItem* Submenu::selectButtonPress() {
 	if (shouldForwardButtons()) {
+		// In horizontal menus, some items (e.g. patch cable menus like vibrato)
+		// should enter their own full-screen session before handling SELECT.
+		if ((*current_item_)->allowToBeginSessionFromHorizontalMenu()) {
+			return *current_item_;
+		}
 		return (*current_item_)->selectButtonPress();
 	}
-	else {
-		return *current_item_;
-	}
+
+	return *current_item_;
 }
 
 ActionResult Submenu::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
@@ -274,6 +278,13 @@ bool Submenu::usesAffectEntire() {
 		return (*current_item_)->usesAffectEntire();
 	}
 	return false;
+}
+
+PatchingSourceShortcutTarget Submenu::getPatchingSourceShortcutTarget(bool previous_press_still_active) const {
+	if (renderingStyle() == RenderingStyle::HORIZONTAL && current_item_ != items.end()) {
+		return (*current_item_)->getPatchingSourceShortcutTarget(previous_press_still_active);
+	}
+	return MenuItem::getPatchingSourceShortcutTarget(previous_press_still_active);
 }
 
 MenuItem* Submenu::patchingSourceShortcutPress(PatchSource s, bool previousPressStillActive) {

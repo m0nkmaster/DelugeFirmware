@@ -1,16 +1,8 @@
-packages:
-  - "."
-
-onlyBuiltDependencies:
-  - canvas
-  - esbuild
-  - sharp
-
-overrides:
-  "@astrojs/markdown-remark": 6.3.8
-  "@astrojs/sitemap": 3.3.0
-  pagefind: 1.4.0-alpha.1
+allowBuilds:
+  canvas: true
+  esbuild: true
+  sharp: true
 
 patchedDependencies:
-  "@astrojs/starlight@0.32.6": patches/@astrojs%2Fstarlight@0.32.5.patch
-  "@astrojs/markdown-remark@6.3.8": patches/@astrojs%2Fmarkdown-remark@6.3.1.patch
+  # Normalize page URLs when matching exclusions on sites without trailing slashes.
+  starlight-to-pdf@1.4.0: patches/starlight-to-pdf@1.4.0.patch

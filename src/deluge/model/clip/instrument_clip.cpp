@@ -59,6 +59,8 @@
 #include <new>
 #include <ranges>
 
+#include "playback/mode/playback_mode.h"
+
 namespace params = deluge::modulation::params;
 
 // Supplying song is optional, and basically only for the purpose of setting yScroll according to root note
@@ -713,6 +715,8 @@ void InstrumentClip::processCurrentPos(ModelStackWithTimelineCounter* modelStack
 			ticksTilNextNoteRowEvent = loopLength - lastProcessedPos;
 		}
 
+		// see if it's starting or ending - might be needed for iterance
+		bool ending = not currentPlaybackMode->willClipContinuePlayingAtEnd(modelStack);
 		static PendingNoteOnList pendingNoteOnList; // Making this static, which it really should have always been,
 		                                            // actually didn't help max stack usage at all somehow...
 		pendingNoteOnList.count = 0;
@@ -871,7 +875,7 @@ doNewProbability:
 					ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(
 					    pendingNoteOnList.pendingNoteOns[i].noteRowId, pendingNoteOnList.pendingNoteOns[i].noteRow);
 
-					conditionPassed = iterance.passesCheck(modelStackWithNoteRow->getRepeatCount());
+					conditionPassed = iterance.passesCheck(modelStackWithNoteRow->getRepeatCount(), ending);
 				}
 
 				// lastly, if after checking iteration we still have a note on
@@ -1100,8 +1104,9 @@ ModelStackWithNoteRow* InstrumentClip::getOrCreateNoteRowForYNote(int32_t yNote,
 				modelStack->song->setRootNote(modelStack->song->key.rootNote);
 
 				thisNoteRow = getNoteRowForYNote(yNote); // Must re-get it
-				if (ALPHA_OR_BETA_VERSION && !thisNoteRow) {
+				if (!thisNoteRow) {
 					FREEZE_WITH_ERROR("E -1");
+					return modelStackWithNoteRow; // Still has no NoteRow - same as the out-of-RAM case
 				}
 
 				thisNoteRow->notes.empty(); // Undo our "total hack", above
@@ -1328,8 +1333,8 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
                                           ModelStackWithTimelineCounter* modelStack) {
 	// This method transposes every note row by up to an octave per call, currently
 	// used by the "hold and turn vertical encoder" and "shift + hold and turn
-	// vertical encoder" shortcuts. Returns false, changing nothing, if the transpose
-	// would push a note out of the playable range.
+	// vertical encoder" shortcuts. Returns false, changing nothing, if the clip holds no
+	// notes, or if the transpose would push one out of the playable range.
 
 	if (!direction) {
 		// It's not clear if we ever get "zero" as direction of change, but let's
@@ -1393,13 +1398,29 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
 	// matching the limit that vertical scrolling enforces. We scan every row for the
 	// resulting extreme note rather than assuming the top/bottom row stays the extreme,
 	// because rows can shift by differing amounts.
+	//
+	// Only rows that actually hold notes get a vote, the same way the screen transpose
+	// picks its rows. An empty row is just grid state with no note to push anywhere, and
+	// songs written before this range check existed can carry empty rows far outside
+	// 0-127 (transposing used to be unbounded), where they would otherwise veto every
+	// transpose of the clip forever.
+	bool anyNotesFound = false;
 	int32_t extremeNewYNote = 0;
 	for (int32_t i = 0; i < numRows; i++) {
 		NoteRow* thisNoteRow = noteRows.getElement(i);
-		int32_t newYNote = thisNoteRow->y + shiftFor(thisNoteRow);
-		if (i == 0 || (change > 0 ? newYNote > extremeNewYNote : newYNote < extremeNewYNote)) {
-			extremeNewYNote = newYNote;
+		if (thisNoteRow->hasNoNotes()) {
+			continue;
 		}
+		int32_t newYNote = thisNoteRow->y + shiftFor(thisNoteRow);
+		if (!anyNotesFound || (change > 0 ? newYNote > extremeNewYNote : newYNote < extremeNewYNote)) {
+			extremeNewYNote = newYNote;
+			anyNotesFound = true;
+		}
+	}
+	// Nothing to transpose, and moving the rows and the scroll in step would be invisible
+	// anyway. Bail out rather than advance yScroll unbounded, as the empty-clip case above.
+	if (!anyNotesFound) {
+		return false;
 	}
 	if (!isScrollWithinRange(change, extremeNewYNote)) {
 		return false;
@@ -1408,9 +1429,20 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
 	// Make sure no notes sounding
 	stopAllNotesPlaying(modelStack);
 
-	for (int32_t i = 0; i < numRows; i++) {
+	for (int32_t i = 0; i < noteRows.getNumElements();) {
 		NoteRow* thisNoteRow = noteRows.getElement(i);
-		thisNoteRow->y += shiftFor(thisNoteRow);
+		int32_t newYNote = thisNoteRow->y + shiftFor(thisNoteRow);
+
+		// An empty row carried off the end of the note code range can never hold a note
+		// again, whatever the output type, so drop it rather than let it drift further
+		// out. That's what drains the stale rows described above.
+		if (thisNoteRow->hasNoNotes() && (newYNote < 0 || newYNote > kMaxMIDIValue)) {
+			noteRows.deleteNoteRowAtIndex(i);
+			continue;
+		}
+
+		thisNoteRow->y = newYNote;
+		i++;
 	}
 
 	yScroll += change;
@@ -1666,9 +1698,6 @@ Error InstrumentClip::changeInstrument(ModelStackWithTimelineCounter* modelStack
                                        InstrumentRemoval instrumentRemovalInstruction,
                                        InstrumentClip* favourClipForCloningParamManager, bool keepNoteRowsWithMIDIInput,
                                        bool giveMidiAssignmentsToNewInstrument) {
-
-	bool shouldBackUpExpressionParamsToo = false;
-
 	// If switching to Kit
 	if (newInstrument->type == OutputType::KIT) {
 
@@ -1677,10 +1706,6 @@ Error InstrumentClip::changeInstrument(ModelStackWithTimelineCounter* modelStack
 
 			// Makes sure all NoteRows onscreen are populated, and deletes any empty NoteRows not onscreen.
 			prepareToEnterKitMode(modelStack->song);
-
-			shouldBackUpExpressionParamsToo =
-			    true; // If switching from non-Kit to Kit, expression params won't get used, so store them with the
-			          // backup in case the old MelodicInstrument gets used again later. Actually is this ideal?
 		}
 	}
 
@@ -1703,9 +1728,10 @@ Error InstrumentClip::changeInstrument(ModelStackWithTimelineCounter* modelStack
 		expectNoFurtherTicks(modelStack->song); // Still necessary? Probably.
 	}
 
+	// Also unassigns NoteRows and remembers Drum names.
 	detachFromOutput(modelStack, true, (newInstrument->type == OutputType::KIT), false, keepNoteRowsWithMIDIInput,
 	                 giveMidiAssignmentsToNewInstrument,
-	                 shouldBackUpExpressionParamsToo); // Will unassignAllNoteRowsFromDrums(), and remember Drum names
+	                 false); // Keep channel expression on the Clip across output-type changes.
 
 	Error error =
 	    setInstrument(newInstrument, modelStack->song, newParamManager,
@@ -3221,9 +3247,13 @@ bool InstrumentClip::deleteSoundsWhichWontSound(Song* song) {
 				// its NoteRow?
 				if (clipIsActive && noteRow->drum) {
 
-					if (ALPHA_OR_BETA_VERSION && noteRow->drum->type == DrumType::SOUND
+					// Voices must not outlive their Sound - kill any before it's deallocated below, in all builds
+					if (noteRow->drum->type == DrumType::SOUND
 					    && static_cast<SoundDrum*>(noteRow->drum)->hasActiveVoices()) {
-						FREEZE_WITH_ERROR("E176");
+						if constexpr (ALPHA_OR_BETA_VERSION) {
+							FREEZE_WITH_ERROR("E176");
+						}
+						noteRow->drum->killAllVoices();
 					}
 
 					Drum* drum = noteRow->drum;
@@ -3396,11 +3426,10 @@ int32_t InstrumentClip::getDistanceToNextNote(Note* givenNote, ModelStackWithNot
 
 // Make sure noteRow not NULL before you call!
 int32_t InstrumentClip::getNoteRowId(NoteRow* noteRow, int32_t noteRowIndex) {
-#if ALPHA_OR_BETA_VERSION
 	if (!noteRow) {
 		FREEZE_WITH_ERROR("E380");
+		return noteRowIndex; // If resumed, don't dereference NULL below
 	}
-#endif
 	if (output->type == OutputType::KIT) {
 		return noteRowIndex;
 	}

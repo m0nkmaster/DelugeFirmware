@@ -677,6 +677,9 @@ enum class MIDITransposeControlMethod : uint8_t {
 constexpr auto kNumMIDITransposeControlMethods = util::to_underlying(MIDITransposeControlMethod::CHORD) + 1;
 
 constexpr int32_t kNumClustersLoadedAhead = 2;
+constexpr int32_t kMaxNumClustersLoadedAhead = 8;
+// How many further Clusters an AudioClip asks to be loaded beyond those it holds, without holding reasons on them
+constexpr int32_t kNumClustersPrefetchedForAudioClip = 2;
 
 enum class InputMonitoringMode : uint8_t {
 	SMART,
@@ -706,13 +709,21 @@ enum class ArmState {
 };
 
 constexpr int32_t kNumProbabilityValues = 20;
-constexpr int32_t kNumIterancePresets = 35;                // 1of2 through 8of8 (indexes 1 through 35)
-constexpr int32_t kCustomIterancePreset = 36;              // The "CUSTOM" iterance value is right after "8of8"
-constexpr Iterance kCustomIteranceValue = Iterance{1, 1};  // "1of1"
-constexpr Iterance kDefaultIteranceValue = Iterance{0, 0}; // 0 means OFF
-constexpr int32_t kDefaultIterancePreset = 0;              // 0 means OFF
+constexpr int32_t kNumIterancePresets = 37; // first, last, then 1of2 through 8of8 (indexes 3 through 37)
+constexpr int32_t kCustomIterancePreset = kNumIterancePresets + 1; // The "CUSTOM" iterance value is right after "8of8"
+constexpr Iterance kCustomIteranceValue = Iterance{1, 1};          // "1of1"
+constexpr Iterance kDefaultIteranceValue = Iterance{0, 0};         // 0, 0 means OFF
+
+constexpr int32_t kFirstIterancePreset = 1;
+constexpr int32_t kLastIterancePreset = 2;
+constexpr Iterance kFirstIteranceValue = Iterance{0, 1}; // 0, 1 means first time only
+constexpr Iterance kLastIteranceValue = Iterance{0, 2};  // 0, 2 means last time only
+
+constexpr int32_t kDefaultIterancePreset = 0; // 0 means OFF
+// these are  only used for reading old songs
 constexpr int32_t kOldFillProbabilityValue = 0;
 constexpr int32_t kOldNotFillProbabilityValue = 128; // This is like the "latched" state of Fill (zero ORed with 128)
+
 constexpr int32_t kDefaultLiftValue = 64;
 
 enum FillMode : uint8_t {
@@ -857,6 +868,7 @@ enum class AudioInputChannel {
 	RIGHT,
 	STEREO,
 	BALANCED,
+	USB, // Stereo audio from a USB host (drivers/usb/usb_audio.h)
 	MIX,
 	OUTPUT,
 	SPECIFIC_OUTPUT,

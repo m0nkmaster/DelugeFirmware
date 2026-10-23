@@ -45,8 +45,8 @@ static int32_t nextSDTestDirection = 1;
 static uint32_t encodersWaitingForCardRoutineEnd;
 
 void interpretEncodersTask() {
+	poll_encoder_pins();
 	interpretEncoders(false);
-	blockTask(EncoderTaskID);
 }
 
 bool interpretEncoders(bool skipActioning) {
