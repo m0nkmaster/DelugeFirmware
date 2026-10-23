@@ -3172,6 +3172,7 @@ void Sound::setNumUnison(int32_t newNum, ModelStackWithSoundFlags* modelStack) {
 							// TimeStretcher::hopEnd.
 							static_cast<SampleLowLevelReader&>(newVoiceSample) = SampleLowLevelReader(oldVoiceSample);
 							newVoiceSample.pendingSamplesLate = oldVoiceSample.pendingSamplesLate;
+							newVoiceSample.pendingStartOffset = oldVoiceSample.pendingStartOffset;
 							newVoiceSample.doneFirstRenderYet = true;
 
 							// Don't do any caching for new part. Old parts will stop using their cache anyway

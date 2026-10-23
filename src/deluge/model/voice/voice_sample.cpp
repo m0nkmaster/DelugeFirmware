@@ -40,13 +40,15 @@ void VoiceSample::beenUnassigned(bool wontBeUsedAgain) {
 }
 
 // You'll normally want to call setupClustersForInitialPlay() after this
-void VoiceSample::noteOn(SamplePlaybackGuide* guide, uint32_t samplesLate, int32_t priorityRating) {
+void VoiceSample::noteOn(SamplePlaybackGuide* guide, uint32_t samplesLate, int32_t priorityRating,
+                         uint32_t startOffset) {
 
 	doneFirstRenderYet = false;
 	cache = nullptr;
 
 	pendingSamplesLate = samplesLate; // We store this to deal with later, because in order to deal with this we need to
 	                                  // know the pitch-adjustment, and that's not calculated yet
+	pendingStartOffset = startOffset;
 	oscPos = 0;
 	interpolationBufferSizeLastTime = 0;
 	timeStretcher = nullptr; // Just in case
@@ -1570,6 +1572,12 @@ finishedTimestretchedRead:
 bool VoiceSample::sampleZoneChanged(SamplePlaybackGuide* voiceSource, Sample* sample, bool reversed,
                                     MarkerType markerType, LoopType loopingType, int32_t priorityRating,
                                     bool forAudioClip) {
+
+	// Still waiting to begin from pendingStartOffset, so nothing has been read yet. The guide's new bounds will be used
+	// once it does begin.
+	if (pendingStartOffset) {
+		return true;
+	}
 
 	if (cache && cache->reversed != reversed) {
 		// If the reversing has changed, then the cache is no longer valid

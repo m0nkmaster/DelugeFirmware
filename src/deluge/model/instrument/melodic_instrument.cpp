@@ -18,6 +18,7 @@
 #include "model/instrument/melodic_instrument.h"
 #include "definitions_cxx.hpp"
 #include "gui/ui/keyboard/keyboard_screen.h"
+#include "gui/ui/sample_marker_editor.h"
 #include "gui/views/automation_view.h"
 #include "gui/views/instrument_clip_view.h"
 #include "gui/views/view.h"
@@ -531,6 +532,7 @@ void MelodicInstrument::beginAuditioningForNote(ModelStack* modelStack, int32_t 
 	if (!activeClip) {
 		return;
 	}
+	SampleMarkerEditor::LiveAuditionScope liveAudition;
 	if (isNoteAuditioning(note)) {
 		//@todo this could definitely be handled better. Ideally we track both notes.
 		// if we don't do this then duplicate mpe notes get stuck

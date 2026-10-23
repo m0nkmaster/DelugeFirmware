@@ -34,8 +34,8 @@ VoiceUnisonPartSource::~VoiceUnisonPartSource() {
 }
 
 bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlaybackGuide* guide, uint32_t samplesLate,
-                                   uint32_t oscRetriggerPhase, bool resetEverything, SynthMode synthMode,
-                                   uint8_t velocity) {
+                                   uint32_t sampleStartOffset, uint32_t oscRetriggerPhase, bool resetEverything,
+                                   SynthMode synthMode, uint8_t velocity) {
 
 	if (synthMode != SynthMode::FM && source->oscType == OscType::SAMPLE) {
 
@@ -57,9 +57,9 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
 			// an allocation before setupClustersForInitialPlay could steal it
 			voiceSample->beenUnassigned(false);
 		}
-		voiceSample->noteOn(guide, samplesLate, voice->getPriorityRating());
-		if (samplesLate != 0u) {
-			return true; // We're finished in this case
+		voiceSample->noteOn(guide, samplesLate, voice->getPriorityRating(), sampleStartOffset);
+		if (samplesLate != 0u || sampleStartOffset != 0u) {
+			return true; // We're finished in this case - playback gets started mid-sample at first render
 		}
 		return voiceSample->setupClusersForInitialPlay(guide, (Sample*)guide->audioFileHolder->audioFile, 0, false, 1);
 	}

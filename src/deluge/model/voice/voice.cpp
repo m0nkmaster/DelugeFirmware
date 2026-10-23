@@ -23,6 +23,7 @@
 #include "dsp/oscillators/sine_osc.h"
 #include "dsp/timestretch/time_stretcher.h"
 #include "dsp/util.hpp"
+#include "gui/ui/sample_marker_editor.h"
 #include "gui/waveform/waveform_renderer.h"
 #include "io/debug/log.h"
 #include "memory/general_memory_allocator.h"
@@ -293,11 +294,18 @@ activenessDetermined:
 		// int32_t samplesLateHere = samplesLate; // Make our own copy of this - we're going to deactivate it if we're
 		// in STRETCH mode, cos that works differently
 
+		uint32_t sampleStartOffset = 0;
+
 		if (oscType == OscType::SAMPLE && guides[s].audioFileHolder) {
 			source->sampleControls.invertReversed = sound.invertReversed; // Copy the temporary flag from the sound
-			guides[s].setupPlaybackBounds(source->sampleControls.isCurrentlyReversed());
+			bool reversed = source->sampleControls.isCurrentlyReversed();
+			guides[s].setupPlaybackBounds(reversed);
 
 			// if (source->repeatMode == SampleRepeatMode::STRETCH) samplesLateHere = 0;
+
+			if (samplesLate == 0u) {
+				sampleStartOffset = sampleMarkerEditor.getAuditionStartOffset(sound, s, guides[s], reversed);
+			}
 		}
 
 		for (int32_t u = 0; u < sound.numUnison; u++) {
@@ -305,9 +313,9 @@ activenessDetermined:
 			// Check that we already marked this unison-part-source as active. Among other things, this ensures that if
 			// the osc is set to SAMPLE, there actually is a sample loaded.
 			if (unisonParts[u].sources[s].active) {
-				bool success =
-				    unisonParts[u].sources[s].noteOn(this, source, &guides[s], samplesLate, sound.oscRetriggerPhase[s],
-				                                     resetEnvelopes, sound.synthMode, velocity);
+				bool success = unisonParts[u].sources[s].noteOn(this, source, &guides[s], samplesLate,
+				                                                sampleStartOffset, sound.oscRetriggerPhase[s],
+				                                                resetEnvelopes, sound.synthMode, velocity);
 				if (!success) [[unlikely]] {
 					return false; // This shouldn't really ever happen I don't think really...
 				}
@@ -2068,14 +2076,19 @@ pitchTooHigh:
 				goto instantUnassign;
 			}
 
-			// If user unmuted mid-note...
-			bool tryToStartMidNote = voiceSample->pendingSamplesLate;
+			// If user unmuted mid-note, or we're auditioning from the visible part of the waveform...
+			bool tryToStartMidNote = voiceSample->pendingSamplesLate || voiceSample->pendingStartOffset;
 			if (tryToStartMidNote) [[unlikely]] {
 
 				int32_t rawSamplesLate;
 
+				// Starting from an offset - that's already in raw samples. (We never also have pendingSamplesLate.)
+				if (voiceSample->pendingStartOffset) {
+					rawSamplesLate = voiceSample->pendingStartOffset;
+				}
+
 				// Synced / STRETCH - it's super easy.
-				if (sound.sources[s].repeatMode == SampleRepeatMode::STRETCH) {
+				else if (sound.sources[s].repeatMode == SampleRepeatMode::STRETCH) {
 					rawSamplesLate = guides[s].getSyncedNumSamplesIn();
 				}
 
@@ -2109,9 +2122,14 @@ pitchTooHigh:
 					goto instantUnassign;
 				}
 				else if (result == LateStartAttemptStatus::WAIT) {
+					// Unlike a late start, don't skip ahead by the time spent waiting - begin exactly at the offset
+					if (voiceSample->pendingStartOffset) {
+						voiceSample->pendingSamplesLate = 0;
+					}
 					continue;
 				}
 				// Otherwise, it started fine!
+				voiceSample->pendingStartOffset = 0;
 			}
 
 			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);

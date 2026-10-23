@@ -36,6 +36,8 @@
 #include "model/instrument/instrument.h"
 #include "model/model_stack.h"
 #include "model/sample/sample.h"
+#include "model/sample/sample_playback_guide.h"
+#include "model/settings/runtime_feature_settings.h"
 #include "model/song/song.h"
 #include "model/voice/voice.h"
 #include "model/voice/voice_sample.h"
@@ -214,6 +216,31 @@ void SampleMarkerEditor::writeValue(uint32_t value, MarkerType markerTypeNow) {
 		soundEditor.currentSound->sampleZoneChanged(markerTypeNow, soundEditor.currentSourceIndex, modelStack);
 		getCurrentInstrument()->beenEdited(true);
 	}
+}
+
+uint32_t SampleMarkerEditor::getAuditionStartOffset(const Sound& sound, int32_t sourceIndex,
+                                                    const SamplePlaybackGuide& guide, bool reversed) {
+	if (liveAuditionDepth == 0 || getCurrentUI() != this || guide.sequenceSyncLengthTicks
+	    || !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::AuditionFromWaveformView)
+	    || getCurrentClip()->type != ClipType::INSTRUMENT || soundEditor.currentSound != &sound
+	    || soundEditor.currentSourceIndex != sourceIndex || soundEditor.currentMultiRange == nullptr
+	    || guide.audioFileHolder != soundEditor.currentMultiRange->getAudioFileHolder()
+	    || guide.audioFileHolder->audioFile != waveformBasicNavigator.sample) {
+		return 0;
+	}
+
+	auto* holder = static_cast<SampleHolder*>(guide.audioFileHolder);
+	int64_t startPos = holder->startPos;
+	int64_t endPos = holder->getEndPos();
+
+	// Reversed playback runs leftwards from the end marker, so begin at the last sample visible on screen
+	if (reversed) {
+		int64_t viewEnd = waveformBasicNavigator.xScroll + int64_t{kDisplayWidth} * waveformBasicNavigator.xZoom;
+		return (viewEnd > startPos + 1 && viewEnd < endPos) ? endPos - viewEnd : 0;
+	}
+
+	int64_t viewStart = waveformBasicNavigator.xScroll;
+	return (viewStart > startPos && viewStart < endPos) ? viewStart - startPos : 0;
 }
 
 int32_t SampleMarkerEditor::getStartColOnScreen(int32_t unscrolledPos) {

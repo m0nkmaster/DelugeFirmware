@@ -18,6 +18,7 @@
 #include "model/instrument/kit.h"
 #include "definitions_cxx.hpp"
 #include "dsp/stereo_sample.h"
+#include "gui/ui/sample_marker_editor.h"
 #include "gui/ui/sound_editor.h"
 #include "gui/ui/ui.h"
 #include "gui/views/automation_view.h"
@@ -1924,6 +1925,7 @@ void Kit::beginAuditioningforDrum(ModelStackWithNoteRow* modelStack, Drum* drum,
 	if (!drum) {
 		return;
 	}
+	SampleMarkerEditor::LiveAuditionScope liveAudition;
 	ParamManager* paramManagerForDrum = nullptr;
 
 	NoteRow* noteRow = modelStack->getNoteRowAllowNull();

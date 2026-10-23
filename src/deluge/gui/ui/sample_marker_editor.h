@@ -24,6 +24,8 @@
 
 class Sample;
 class MultisampleRange;
+class Sound;
+class SamplePlaybackGuide;
 struct MarkerColumn;
 
 // This is just for when we're editing a Sample's loop points etc. It mostly makes use of WaveformBasicNavigator,
@@ -59,6 +61,22 @@ public:
 	/// Lock the loop so the start and end are always the same number of samples apart
 	void loopLock();
 
+	/// For a voice starting on the sample being edited, the number of raw samples past its normal playback start to
+	/// begin at, so that auditioning plays from the visible part of the waveform (its left edge, or its right edge if
+	/// reversed) when the start marker is scrolled off screen. Returns 0 to start normally.
+	uint32_t getAuditionStartOffset(const Sound& sound, int32_t sourceIndex, const SamplePlaybackGuide& guide,
+	                                bool reversed);
+
+	/// Wraps the processing of a live note-on (audition pad or MIDI input), so that only those, and not sequenced
+	/// notes, start from the visible part of the waveform.
+	class LiveAuditionScope {
+	public:
+		LiveAuditionScope() { ++liveAuditionDepth; }
+		~LiveAuditionScope() { --liveAuditionDepth; }
+		LiveAuditionScope(const LiveAuditionScope&) = delete;
+		LiveAuditionScope& operator=(const LiveAuditionScope&) = delete;
+	};
+
 	MarkerType markerType;
 
 	int8_t blinkPhase;
@@ -72,6 +90,7 @@ public:
 
 private:
 	static constexpr int32_t kInvalidColumn = -2147483648;
+	static inline int32_t liveAuditionDepth = 0;
 	void writeValue(uint32_t value, MarkerType markerTypeNow = MarkerType::NOT_AVAILABLE);
 
 	int32_t getStartColOnScreen(int32_t unscrolledPos);

@@ -34,7 +34,8 @@ public:
 	VoiceUnisonPartSource() = default;
 	~VoiceUnisonPartSource();
 	bool noteOn(Voice* voice, Source* source, VoiceSamplePlaybackGuide* voiceSource, uint32_t samplesLate,
-	            uint32_t oscPhase, bool resetEverything, SynthMode synthMode, uint8_t velocity);
+	            uint32_t sampleStartOffset, uint32_t oscPhase, bool resetEverything, SynthMode synthMode,
+	            uint8_t velocity);
 	void unassign(bool deletingSong);
 	bool getPitchAndSpeedParams(Source* source, VoiceSamplePlaybackGuide* voiceSource, uint32_t* phaseIncrement,
 	                            uint32_t* timeStretchRatio, uint32_t* noteLengthInSamples);

@@ -49,7 +49,7 @@ public:
 	// object-level move-assign is needed; if one ever is, give it a body that releases resources first.
 	VoiceSample& operator=(VoiceSample&& other) = delete;
 
-	void noteOn(SamplePlaybackGuide* guide, uint32_t samplesLate, int32_t priorityRating);
+	void noteOn(SamplePlaybackGuide* guide, uint32_t samplesLate, int32_t priorityRating, uint32_t startOffset = 0);
 	bool noteOffWhenLoopEndPointExists(Voice* voice, VoiceSamplePlaybackGuide* voiceSource);
 
 	void setupCacheLoopPoints(SamplePlaybackGuide* voiceSource, Sample* sample, LoopType loopingType);
@@ -87,6 +87,9 @@ public:
 
 	uint32_t pendingSamplesLate = 0; // This isn't used for AudioClips. And for samples in STRETCH mode, the exact
 	                                 // number isn't relevant - it gets recalculated
+	// Raw samples past the normal playback start to begin at, e.g. to audition from the visible part of the waveform
+	// in the SampleMarkerEditor. Cleared once playback has actually begun.
+	uint32_t pendingStartOffset = 0;
 	TimeStretcher* timeStretcher = nullptr;
 
 	SampleCache* cache = nullptr;
