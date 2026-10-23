@@ -971,7 +971,7 @@ void FileWriter::resetWriter() {
 
 FRESULT FileWriter::closeWriter() {
 	if (memoryBased) {
-		if (fileWriteBufferCurrentPos < bufferSize) {
+		if (writeClusterBuffer && fileWriteBufferCurrentPos < bufferSize) {
 			writeClusterBuffer[fileWriteBufferCurrentPos] = 0;
 			return FRESULT::FR_OK;
 		}

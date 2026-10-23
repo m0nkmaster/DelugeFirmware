@@ -46,8 +46,9 @@ public:
 		if (minChars < 1) {
 			minChars = 1;
 		}
-		if (minChars > static_cast<int>(sizeof(tmp) - 1)) {
-			minChars = static_cast<int>(sizeof(tmp) - 1);
+		// Leave room for a leading '-' plus the terminator
+		if (minChars > static_cast<int>(sizeof(tmp) - 2)) {
+			minChars = static_cast<int>(sizeof(tmp) - 2);
 		}
 		intToString(i, tmp, minChars);
 		append(tmp);

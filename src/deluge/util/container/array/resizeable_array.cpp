@@ -544,15 +544,19 @@ tryAgain:
 		if (getRandom255() < 10)
 			goto getBrandNewMemory;
 #endif
+		// Sizes are measured from the allocation start, so include the sub-element slack left of memory. That keeps
+		// both strictly greater than allocatedSize whenever memorySize < newNum. memory/memoryStart/memorySize have
+		// already been rewritten above, so never return from here directly - getBrandNewMemory restores on failure.
 		uint32_t minBytesNeeded = 0;
 		uint32_t idealBytesNeeded = 0;
 		int32_t idealNum = 0;
 		if (!util::checked_mul(static_cast<uint32_t>(newNum), elementSize, minBytesNeeded)
+		    || !util::checked_add(minBytesNeeded, extraSpaceLeft, minBytesNeeded)
 		    || !util::checked_add(newNum, numExtraSpacesToAllocate, idealNum)
 		    || !util::checked_mul(static_cast<uint32_t>(idealNum), elementSize, idealBytesNeeded)
-		    || minBytesNeeded < allocatedSize || idealBytesNeeded < allocatedSize) {
-			LOCK_EXIT
-			return false;
+		    || !util::checked_add(idealBytesNeeded, extraSpaceLeft, idealBytesNeeded)
+		    || minBytesNeeded <= allocatedSize || idealBytesNeeded < minBytesNeeded) {
+			goto getBrandNewMemory;
 		}
 		GeneralMemoryAllocator::get().extend(memoryAllocationStart, minBytesNeeded - allocatedSize,
 		                                     idealBytesNeeded - allocatedSize, &amountExtendedLeft,

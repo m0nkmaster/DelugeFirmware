@@ -499,17 +499,6 @@ ActionResult QwertyUI::horizontalEncoderAction(int32_t offset) {
 	// the edit pos runs off either end of enteredText and never meets the end checks above again.
 	enteredTextEditPos = std::clamp<int32_t>(enteredTextEditPos + offset, 0, length);
 
-	// Clamp to string bounds (encoder delta can overshoot)
-	if (enteredTextEditPos < 0) {
-		enteredTextEditPos = 0;
-	}
-	else {
-		int32_t length = enteredText.getLength();
-		if (enteredTextEditPos > length) {
-			enteredTextEditPos = length;
-		}
-	}
-
 doDisplayText:
 	displayText();
 

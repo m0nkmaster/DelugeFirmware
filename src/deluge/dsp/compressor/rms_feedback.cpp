@@ -153,10 +153,6 @@ float RMSFeedbackCompressor::calcRMS(std::span<StereoSample> buffer) {
 		sum += (s * s) >> 32;
 	}
 
-	if (sum > INT32_MAX) {
-		sum = INT32_MAX;
-	}
-
 	float ns = buffer.size() * 2;
 	mean = (static_cast<float>(sum) / ONE_Q31f) / ns;
 	// warning this is not good math but it's pretty close and way cheaper than doing it properly
