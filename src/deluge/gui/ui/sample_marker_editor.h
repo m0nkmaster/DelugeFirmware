@@ -67,6 +67,10 @@ public:
 	uint32_t getAuditionStartOffset(const Sound& sound, int32_t sourceIndex, const SamplePlaybackGuide& guide,
 	                                bool reversed);
 
+	/// When editing an AudioClip's markers, the Clip position (in ticks) matching the visible part of the waveform, for
+	/// playback to start from. Returns -1 if not editing an AudioClip here (or the feature is off).
+	int32_t getAudioClipPlaybackStartPos();
+
 	/// Wraps the processing of a live note-on (audition pad or MIDI input), so that only those, and not sequenced
 	/// notes, start from the visible part of the waveform.
 	class LiveAuditionScope {
@@ -100,6 +104,9 @@ private:
 	void getColsOnScreen(MarkerColumn* cols);
 	void recordScrollAndZoom();
 	bool shouldAllowExtraScrollRight();
+	/// Samples past the normal playback start at which the visible part of the waveform begins (from its right edge if
+	/// reversed), or 0 if the start marker is on screen or the view is outside the markers.
+	[[nodiscard]] int64_t getViewStartOffset(int64_t startPos, int64_t endPos, bool reversed) const;
 	/// Render a single column of the sample markers.
 	///
 	/// @param xDisplay    the column to render in to

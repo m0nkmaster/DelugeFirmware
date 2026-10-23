@@ -1315,6 +1315,17 @@ For a detailed description of this feature, please refer to the feature document
 See this demo for more details:
 [Audio Clip View - Trimming Tips](https://www.youtube.com/watch?v=iWhVUsx40Mg&t=45s&ab_channel=RonCavagnaro).
 
+### 4.9.3 - Play From Waveform View
+
+- <Badge text="c1.3" variant="tip" /> When editing an audio clip's markers in the waveform view (e.g. :key[Shift + Waveform Pad]), pressing
+  :key[Play] now starts playback from the left edge of the visible waveform if you have scrolled or zoomed past the
+  `START` (GREEN) marker, so you can check the `END` point without waiting for the whole clip to play through.
+  - If the clip is reversed, playback starts from the right edge of the visible waveform instead.
+  - Other clips play from the matching position, just as with :key[Horizontal + Play].
+  - :key[Horizontal + Play] starts playback from the beginning instead, and while playing it restarts from the visible waveform.
+  - This is controlled by the same `SETTINGS > COMMUNITY FEATURES > AUDITION FROM WAVEFORM VIEW` setting as
+    [Audition From Waveform View](#4511---audition-from-waveform-view).
+
 ## 4.10 - Third Party Device Integration
 
 This is largely on the development side and created the start of a system of modules and hook points for enabling
@@ -1414,7 +1425,7 @@ Note: these settings are saved to `SETTINGS/CommunityFeatures.XML` on your SD ca
 - `Show Battery Level (BATT)` <Badge text="c1.3" variant="tip" />
   - When On, displays battery level information in the System menu. Shows voltage and percentage on OLED displays, percentage on 7-segment displays.
 - `Audition From Waveform View (VIEW)` <Badge text="c1.3" variant="tip" />
-  - When On, auditioning a sample while editing its markers starts playback from the visible part of the waveform. See [Audition From Waveform View](#4511---audition-from-waveform-view).
+  - When On, auditioning a sample (or pressing :key[Play] for an audio clip) while editing its markers starts playback from the visible part of the waveform. See [Audition From Waveform View](#4511---audition-from-waveform-view) and [Play From Waveform View](#493---play-from-waveform-view).
 
 ## 6. Sysex Handling
 

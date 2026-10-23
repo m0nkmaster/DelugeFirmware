@@ -21,6 +21,7 @@
 #include "gui/menu_item/sync_level.h"
 #include "gui/ui/audio_recorder.h"
 #include "gui/ui/load/load_song_ui.h"
+#include "gui/ui/sample_marker_editor.h"
 #include "gui/ui/sound_editor.h"
 #include "gui/ui/ui.h"
 #include "gui/ui_timer_manager.h"
@@ -339,6 +340,9 @@ void PlaybackHandler::setupPlaybackUsingInternalClock(int32_t buttonPressLatency
 	bool startFromCurrentScreen = false;
 	bool isArrangementPadPressed = false;
 
+	// If editing an audio clip's markers in the waveform view, the "current screen" is the visible part of the waveform
+	int32_t waveformViewPos = sampleMarkerEditor.getAudioClipPlaybackStartPos();
+
 	// if we're restarting playback from beginning, do that
 	if (!restartingPlaybackAtBeginning) {
 		bool isArrangerView = (rootUI == &arrangerView)
@@ -374,7 +378,9 @@ void PlaybackHandler::setupPlaybackUsingInternalClock(int32_t buttonPressLatency
 				// the other from the beginning, even when cross screen and the community setting are both on
 				// (issue #3166). Recording into arranger always starts from the current screen.
 
-				bool startFromCurrentScreenByDefault = alternativePlaybackStartBehaviour || inArrangerCrossScreen;
+				// Auditioning a cut point in the waveform view also starts from the screen by default
+				bool startFromCurrentScreenByDefault =
+				    alternativePlaybackStartBehaviour || inArrangerCrossScreen || waveformViewPos >= 0;
 
 				startFromCurrentScreen =
 				    recordingToArranger || (isRestartShortcutPressed != startFromCurrentScreenByDefault);
@@ -403,7 +409,7 @@ void PlaybackHandler::setupPlaybackUsingInternalClock(int32_t buttonPressLatency
 	// next is <> + play / cross screen + play, or recording into arranger - start from the current left edge scroll
 	// position this is good even for cross screen playback since the last cursor position isn't visible
 	else if (startFromCurrentScreen) {
-		newPos = currentSong->xScroll[navSys];
+		newPos = (waveformViewPos >= 0) ? waveformViewPos : currentSong->xScroll[navSys];
 	}
 
 	// See if we're gonna do a tempoless record

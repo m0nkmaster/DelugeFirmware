@@ -230,9 +230,29 @@ uint32_t SampleMarkerEditor::getAuditionStartOffset(const Sound& sound, int32_t 
 	}
 
 	auto* holder = static_cast<SampleHolder*>(guide.audioFileHolder);
-	int64_t startPos = holder->startPos;
-	int64_t endPos = holder->getEndPos();
+	return getViewStartOffset(holder->startPos, holder->getEndPos(), reversed);
+}
 
+int32_t SampleMarkerEditor::getAudioClipPlaybackStartPos() {
+	if (getCurrentUI() != this || getCurrentClip()->type != ClipType::AUDIO
+	    || !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::AuditionFromWaveformView)) {
+		return -1;
+	}
+
+	AudioClip& clip = *getCurrentAudioClip();
+	int64_t startPos = clip.sampleHolder.startPos;
+	int64_t endPos = clip.sampleHolder.getEndPos(true);
+	int64_t lengthInSamples = endPos - startPos;
+	if (lengthInSamples <= 0 || clip.loopLength <= 0) {
+		return 0;
+	}
+
+	// The Clip's ticks map linearly onto its samples, just as when syncing its playback
+	int64_t offset = getViewStartOffset(startPos, endPos, clip.sampleControls.isCurrentlyReversed());
+	return static_cast<int32_t>(offset * clip.loopLength / lengthInSamples);
+}
+
+int64_t SampleMarkerEditor::getViewStartOffset(int64_t startPos, int64_t endPos, bool reversed) const {
 	// Reversed playback runs leftwards from the end marker, so begin at the last sample visible on screen
 	if (reversed) {
 		int64_t viewEnd = waveformBasicNavigator.xScroll + int64_t{kDisplayWidth} * waveformBasicNavigator.xZoom;
