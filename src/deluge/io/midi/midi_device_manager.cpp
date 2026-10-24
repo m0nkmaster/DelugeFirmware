@@ -38,6 +38,8 @@ extern "C" {
 #include "drivers/uart/uart.h"
 
 extern uint8_t anyUSBSendingStillHappening[];
+extern uint8_t currentDeviceNumWithSendPipe[USB_NUM_USBIP][2];
+extern uint8_t usbHostOutPipeInitializedForHub[2];
 }
 #pragma GCC diagnostic push
 // This is supported by GCC and other compilers should error (not warn), so turn off for this file
@@ -326,6 +328,31 @@ extern "C" void detachedAsPeripheral(int32_t ip) {
 	anyUSBSendingStillHappening[ip] = 0; // Reset this again. Been meaning to do this, and can no longer quite remember
 	                                     // reason or whether technically essential, but adds to safety at least.
 
+	recountSmallestMPEZones();
+}
+
+// Both USB roles share these buffers. A role switch must also detach logical cables and discard pending MIDI, or
+// the next role can send through the old device's pipes (or remain stuck waiting for a transfer that was cancelled).
+extern "C" void resetUsbMidiConnections() {
+	for (int32_t ip = 0; ip < USB_NUM_USBIP; ++ip) {
+		for (int32_t d = 0; d < MAX_NUM_USB_MIDI_DEVICES; ++d) {
+			auto& connected = connectedUSBMIDIDevices[ip][d];
+			for (auto*& cable : connected.cable) {
+				if (cable) {
+					cable->connectionFlags &= ~(1 << d);
+					cable = nullptr;
+				}
+			}
+			connected.setup();
+			connected.ringBufReadIdx = connected.ringBufWriteIdx;
+		}
+		anyUSBSendingStillHappening[ip] = 0;
+		currentDeviceNumWithSendPipe[ip][0] = MAX_NUM_USB_MIDI_DEVICES;
+		currentDeviceNumWithSendPipe[ip][1] = MAX_NUM_USB_MIDI_DEVICES;
+	}
+	usbHostOutPipeInitializedForHub[0] = 0;
+	usbHostOutPipeInitializedForHub[1] = 0;
+	anythingInUSBOutputBuffer = false;
 	recountSmallestMPEZones();
 }
 

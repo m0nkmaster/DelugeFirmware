@@ -413,7 +413,9 @@ void usb_hhub_registration(usb_utr_t* ptr, usb_hcdreg_t* callback)
         driver.p_pipetbl = callback->p_pipetbl; /* Pipe Define Table address */
     }
 
-    driver.ifclass    = (uint16_t)USB_IFCLS_HUB;   /* Interface Class */
+    driver.ifclass    = (uint16_t)USB_IFCLS_HUB; /* Interface Class */
+    driver.ifsubclass = USB_IFSUBCLS_ANY;
+    driver.ifprotocol = USB_IFPROTO_ANY;
     driver.classinit  = &usb_hhub_initial;         /* Driver init */
     driver.classcheck = &usb_hhub_check_class;     /* Driver check */
     driver.devconfig  = (usb_cb_t)&usb_hhub_open;  /* Device configured */

@@ -1212,6 +1212,13 @@ void usb_hstd_brdy_pipe_process_rohan_midi_and_hub(usb_utr_t* ptr, uint16_t bits
 
         if (bitsts & USB_BITSET(pipe))
         {
+            // Audio pipes need the generic completion callback and their actual packet length. The MIDI fast path
+            // below assumes 64-byte packets and intentionally bypasses class callbacks.
+            if (usb_cstd_get_pipe_type(ptr, pipe) == USB_TYPFIELD_ISO)
+            {
+                usb_hstd_brdy_pipe_process(ptr, USB_BITSET(pipe));
+                continue;
+            }
             /* Interrupt check */
             // hw_usb_clear_status_bemp(NULL, pipe);
 

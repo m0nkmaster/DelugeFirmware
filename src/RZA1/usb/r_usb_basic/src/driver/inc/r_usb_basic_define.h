@@ -796,7 +796,7 @@
 
 /* Descriptor size */
 #define USB_DEVICESIZE (20u)   /* Device Descriptor size */
-#define USB_CONFIGSIZE (1024u) /* Configuration Descriptor size */
+#define USB_CONFIGSIZE (1024u) /* Configuration Descriptor size; audio devices commonly expose many alternates */
 
 /* Number of software retries when a no-response condition occurs during a transfer */
 #define USB_PIPEERROR (1u)

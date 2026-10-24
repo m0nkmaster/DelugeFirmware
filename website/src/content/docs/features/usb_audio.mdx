@@ -118,3 +118,29 @@ Recording a sample from a synth or kit's sample menu still uses the line input o
 Audio from the computer is buffered by about 6 ms (256 samples) on the Deluge before it's played or recorded, which
 keeps it smooth when the Deluge is busy. Audio going to the computer is buffered by about 2 ms. Your computer adds its
 own buffering on top of both, which you can usually set in your DAW.
+
+## Experimental USB host input
+
+This build also includes experimental capture from a class-compliant USB audio device connected directly to the
+Deluge. This is separate from using the Deluge as your computer's audio interface.
+
+1. Power the Deluge from its DC supply and disconnect any computer from its USB port.
+2. Connect the audio device using the Deluge's USB host adapter and a USB data cable.
+3. Turn on `SETTINGS > COMMUNITY FEATURES > USB HOST (DC POWER)` (`HOST` on 7SEG).
+4. Choose `USB INPUT` as the audio clip's source and use `SAMPLER` or `LOOPER` to monitor it.
+
+The host switch takes effect without restarting the Deluge. It reconnects the USB session, interrupting any USB
+MIDI or audio in progress. It is a session-only switch: the next boot uses the normal USB role detection. The switch
+refuses to enable host mode while external USB power is detected. The firmware cannot reliably detect whether the
+DC supply is connected, so connect it before enabling host mode.
+
+Support is currently limited to one full-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. UAC2 requires a
+terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
+is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
+sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
+
+<Aside type="caution">
+  TONEX ONE streaming and power delivery have not been verified on hardware. The host switch enables the Deluge's
+  existing USB power output; it cannot increase the hardware's available current. This is not yet universal USB
+  audio compatibility.
+</Aside>
