@@ -18,6 +18,7 @@
 #include "settings.h"
 #include "devSysexSetting.h"
 #include "emulated_display.h"
+#include "gui/menu_item/usb/audio.h"
 #include "hid/display/display.h"
 #include "hid/display/oled_canvas/canvas.h"
 #include "setting.h"
@@ -74,8 +75,11 @@ SettingToggle menuTrimFromStartOfAudioClip(RuntimeFeatureSettingType::TrimFromSt
 SettingToggle menuShowBatteryLevel(RuntimeFeatureSettingType::ShowBatteryLevel);
 RoundedCornersSettingToggle menuRoundedCorners(RuntimeFeatureSettingType::RoundedCorners);
 SettingToggle menuShortcutOverlay(RuntimeFeatureSettingType::ShortcutOverlay);
+// A session-only hardware role switch, so it is not serialized with the feature preferences.
+usb::HostMode menuUsbHostMode{l10n::String::STRING_FOR_USB_HOST_MODE, l10n::String::STRING_FOR_USB_HOST_MODE};
 
-std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings> subMenuEntries{
+std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings + 1> subMenuEntries{
+    &menuUsbHostMode,
     &menuDrumRandomizer,
     &menuFineTempo,
     &menuQuantize,

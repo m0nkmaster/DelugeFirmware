@@ -33,6 +33,7 @@
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
 #include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_extern.h"
 #include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_typedef.h"
+#include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 #include "RZA1/usb/r_usb_hmidi/r_usb_hmidi_if.h"
 #include "RZA1/usb/r_usb_hmidi/src/inc/r_usb_hmidi.h"
 #include "RZA1/usb/userdef/r_usb_hmidi_config.h"
@@ -870,7 +871,13 @@ void usb_registration(usb_utr_t* ptr)
     usb_hcdreg_t driver;
     uint8_t i;
 
-    driver.ifclass    = (uint16_t)USB_IFCLS_AUD;                /* Interface class */
+    /* Audio must be registered before MIDI: a composite audio/MIDI interface is claimed by the audio driver, while a
+     * MIDI-only device falls through to the MIDIStreaming subclass registrations below. */
+    usb_hstd_audio_register(ptr);
+
+    driver.ifclass    = (uint16_t)USB_IFCLS_AUD; /* Interface class */
+    driver.ifsubclass = 0x03;                    /* MIDIStreaming subclass */
+    driver.ifprotocol = USB_IFPROTO_ANY;
     driver.p_tpl      = (uint16_t*)&g_usb_hmidi_devicetpl;      /* Target peripheral list */
     driver.classinit  = (usb_cb_t)&usb_hstd_dummy_function;     /* Driver init */
     driver.classcheck = (usb_cb_check_t)&R_USB_HmidiClassCheck; /* Driver check */

@@ -133,6 +133,10 @@
 #define USB_IFCLS_APL  (0xFEu) /* Application-Specific */
 #define USB_IFCLS_VEN  (0xFFu) /* Vendor-Specific Class */
 
+/* Wildcards used when registering a host class driver. */
+#define USB_IFSUBCLS_ANY (0xFFFFu)
+#define USB_IFPROTO_ANY  (0xFFFFu)
+
 /* Endpoint Descriptor  Define */
 #define USB_EP_IN   (0x80u) /* In Endpoint */
 #define USB_EP_OUT  (0x00u) /* Out Endpoint */

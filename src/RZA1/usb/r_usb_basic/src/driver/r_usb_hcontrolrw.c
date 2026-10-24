@@ -320,22 +320,20 @@ void usb_hstd_ctrl_end(usb_utr_t* ptr, uint16_t status)
         g_usb_hstd_ctsq[ptr->ip] = USB_IDLEST;
     }
 
-    g_p_usb_pipe[USB_PIPE0]->status  = status;
-    g_p_usb_pipe[USB_PIPE0]->pipectr = hw_usb_read_pipectr(ptr, (uint16_t)USB_PIPE0);
-    // g_p_usb_pipe[USB_PIPE0]->errcnt   = (uint8_t)g_usb_hstd_ignore_cnt[ptr->ip][USB_PIPE0];
-    g_p_usb_pipe[USB_PIPE0]->ipp = ptr->ipp;
-    g_p_usb_pipe[USB_PIPE0]->ip  = ptr->ip;
-
-    /* Callback */
-    if (USB_NULL != g_p_usb_pipe[USB_PIPE0])
+    /* Release PIPE0 before the callback so a class driver can queue its next control request. */
+    usb_utr_t* completed    = g_p_usb_pipe[USB_PIPE0];
+    g_p_usb_pipe[USB_PIPE0] = (usb_utr_t*)USB_NULL;
+    if (USB_NULL != completed)
     {
-        if (USB_NULL != (g_p_usb_pipe[USB_PIPE0]->complete))
+        completed->status  = status;
+        completed->pipectr = hw_usb_read_pipectr(ptr, (uint16_t)USB_PIPE0);
+        completed->ipp     = ptr->ipp;
+        completed->ip      = ptr->ip;
+        if (USB_NULL != completed->complete)
         {
-            /* Process Done Callback */
-            (g_p_usb_pipe[USB_PIPE0]->complete)(g_p_usb_pipe[USB_PIPE0], 0, 0);
+            completed->complete(completed, 0, 0);
         }
     }
-    g_p_usb_pipe[USB_PIPE0] = (usb_utr_t*)USB_NULL;
 
 #if USB_CFG_COMPLIANCE == USB_CFG_ENABLE
     hw_usb_clear_enb_sofe(ptr);
