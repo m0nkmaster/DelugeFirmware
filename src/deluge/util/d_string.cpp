@@ -201,9 +201,14 @@ Error String::shorten(int32_t newLength) {
 }
 
 Error String::concatenate(String* otherString) {
+	// Empty source: nothing to append (also avoids getNumReasons on null stringMemory)
+	if (!otherString->stringMemory) {
+		return Error::NONE;
+	}
+
 	if (!stringMemory) {
 		set(otherString);
-		if (getNumReasons() < 2 && otherString->stringMemory != nullptr) {
+		if (getNumReasons() < 2) {
 			FREEZE_WITH_ERROR("S003");
 		}
 		return Error::NONE;
@@ -242,7 +247,6 @@ Error String::concatenateAtPos(char const* newChars, int32_t pos, int32_t newCha
 	// If additional reasons, we definitely have to allocate afresh
 	if (oldNumReasons > 1) {
 		deallocateAfter = false;
-		setNumReasons(oldNumReasons - 1);
 		goto allocateNewMemory;
 	}
 
@@ -280,8 +284,12 @@ allocateNewMemory:
 			// Copy the bit we want to keep of the old memory
 			memcpy(newStringMemory, stringMemory, pos);
 
+			// Only release old ownership after successful allocation
 			if (deallocateAfter) {
 				delugeDealloc(stringMemory - 4);
+			}
+			else {
+				setNumReasons(oldNumReasons - 1);
 			}
 			stringMemory = newStringMemory;
 			setNumReasons(1);
