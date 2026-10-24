@@ -32,18 +32,18 @@ float AbsValueFollower::runEnvelope(float current, float desired, float numSampl
 // output range is 0-21 (2^31)
 // dac clipping is at 16
 StereoFloatSample AbsValueFollower::calcApproxRMS(std::span<StereoSample> buffer) {
-	q31_t l = 0;
-	q31_t r = 0;
+	int64_t l = 0;
+	int64_t r = 0;
 	StereoFloatSample logMean;
 
 	for (StereoSample sample : buffer) {
-		l += std::abs(sample.l);
-		r += std::abs(sample.r);
+		l += sample.l < 0 ? -static_cast<int64_t>(sample.l) : sample.l;
+		r += sample.r < 0 ? -static_cast<int64_t>(sample.r) : sample.r;
 	}
 
 	float ns = buffer.size();
-	meanL = l / ns;
-	meanR = r / ns;
+	meanL = static_cast<float>(l) / ns;
+	meanR = static_cast<float>(r) / ns;
 	// warning this is not good math but it's pretty close and way cheaper than doing it properly
 	// good math would use a long FIR, this is a one pole IIR instead
 	// the more samples we have, the more weight we put on the current mean to avoid response slowing down
