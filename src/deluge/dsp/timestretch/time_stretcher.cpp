@@ -591,8 +591,15 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
 		samplesTilHopEnd = std::min(samplesTilHopEnd, maxHopLength);
 		crossfadeLengthSamples = std::min<int32_t>(samplesTilHopEnd, crossfadeLengthSamples);
 
-		crossfadeIncrement = (uint32_t)kMaxSampleValue / (uint32_t)crossfadeLengthSamples;
-		crossfadeProgress = 0;
+		// Extreme pitch-up + stretch can leave a 1-sample hop whose half-length crossfade is 0
+		if (crossfadeLengthSamples < 1) {
+			crossfadeIncrement = 0;
+			crossfadeProgress = kMaxSampleValue;
+		}
+		else {
+			crossfadeIncrement = (uint32_t)kMaxSampleValue / (uint32_t)crossfadeLengthSamples;
+			crossfadeProgress = 0;
+		}
 
 		// Make sure we haven't shot past end of waveform. If so, we don't want this new play-head sounding
 		if ((int32_t)(beamBackEdge - waveformEndSample) * playDirection >= 0) {
