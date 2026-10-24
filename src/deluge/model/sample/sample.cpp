@@ -1304,6 +1304,9 @@ float Sample::determinePitch(bool doingSingleCycle, float minFreqHz, float maxFr
 
 	// Get the FFT config we'll need
 	ne10_fft_r2c_cfg_int32_t fftCFG = FFTConfigManager::getConfig(kPitchDetectWindowSizeMagnitude);
+	if (!fftCFG) {
+		return 0;
+	}
 
 	// Allocate space for both the real and imaginary number buffers - the imaginary one is tacked on the end
 	int32_t fftInputSize = kPitchDetectWindowSize * sizeof(int32_t);
