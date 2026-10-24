@@ -57,21 +57,35 @@ void MemoryRegion::setup(void* emptySpacesMemory, int32_t emptySpacesMemorySize,
 }
 
 uint32_t MemoryRegion::padSize(uint32_t requiredSize) {
+	// Reject sizes that can't include the 8-byte header overhead without wrapping.
+	// Returning SPACE_SIZE_MASK makes subsequent allocation attempts fail safely.
+	if (requiredSize > SPACE_SIZE_MASK - 8) {
+		return SPACE_SIZE_MASK;
+	}
 	requiredSize += 8; // dirty hack - we need the size with its headers to be aligned so we'll add it here then
 	                   // subtract 8 afterwards
 	if (requiredSize < minAlign_) {
 		requiredSize = minAlign_;
 	}
 	else {
-		int extraSize = 0;
+		uint32_t extraSize = 0;
 		while (requiredSize > maxAlign_) {
+			if (extraSize > SPACE_SIZE_MASK - maxAlign_) {
+				return SPACE_SIZE_MASK;
+			}
 			extraSize += maxAlign_;
 			requiredSize -= maxAlign_;
 		}
 		// if it's not a power of 2 go up to the next power of 2
 		if (!((requiredSize & (requiredSize - 1)) == 0)) {
 			int magnitude = 32 - clz(requiredSize);
-			requiredSize = 1 << magnitude;
+			if (magnitude >= 32) {
+				return SPACE_SIZE_MASK;
+			}
+			requiredSize = 1u << magnitude;
+		}
+		if (requiredSize > SPACE_SIZE_MASK - extraSize) {
+			return SPACE_SIZE_MASK;
 		}
 		requiredSize += extraSize;
 	}
