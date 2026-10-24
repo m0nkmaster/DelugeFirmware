@@ -16,6 +16,7 @@
  */
 #pragma once
 #include "drivers/usb/usb_audio.h"
+#include "drivers/usb/usb_mode.h"
 #include "gui/menu_item/selection.h"
 #include "gui/menu_item/toggle.h"
 #include "hid/display/display.h"
@@ -33,6 +34,24 @@ public:
 		FlashStorage::usbAudioEnabled = this->getValue();
 		if (FlashStorage::usbAudioEnabled != usbAudioActive()) {
 			display->displayPopup(l10n::get(l10n::String::STRING_FOR_RESTART_TO_APPLY));
+		}
+	}
+};
+
+/// Switches the physical port into host mode immediately. This is intentionally session-only because the Deluge
+/// cannot reliably distinguish external DC power from battery power in software.
+class HostMode final : public Toggle {
+public:
+	using Toggle::Toggle;
+	void readCurrentValue() override { this->setValue(deluge::usb::hostMode()); }
+	void writeCurrentValue() override {
+		bool enabled = this->getValue();
+		if (!deluge::usb::setHostMode(enabled)) {
+			readCurrentValue();
+			display->displayPopup(l10n::get(l10n::String::STRING_FOR_USB_MODE_UNAVAILABLE));
+		}
+		else if (enabled) {
+			display->displayPopup(l10n::get(l10n::String::STRING_FOR_DC_POWER_REQUIRED));
 		}
 	}
 };

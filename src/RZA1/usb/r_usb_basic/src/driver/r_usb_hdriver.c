@@ -1703,10 +1703,12 @@ usb_er_t usb_hstd_mgr_open(usb_utr_t* ptr)
     {
         driver = &g_usb_hstd_device_drv[ptr->ip][i];
 
-        driver->rootport = USB_NOPORT;              /* Root port */
-        driver->devaddr  = USB_NODEVICE;            /* Device address */
-        driver->devstate = USB_DETACHED;            /* Device state */
-        driver->ifclass  = (uint16_t)USB_IFCLS_NOT; /* Interface Class : NO class */
+        driver->rootport   = USB_NOPORT;              /* Root port */
+        driver->devaddr    = USB_NODEVICE;            /* Device address */
+        driver->devstate   = USB_DETACHED;            /* Device state */
+        driver->ifclass    = (uint16_t)USB_IFCLS_NOT; /* Interface Class : NO class */
+        driver->ifsubclass = USB_IFSUBCLS_ANY;
+        driver->ifprotocol = USB_IFPROTO_ANY;
 
         g_usb_hstd_device_info[ptr->ip][i][0] = USB_NOPORT;              /* Root port */
         g_usb_hstd_device_info[ptr->ip][i][1] = USB_DETACHED;            /* Device state */
@@ -1742,6 +1744,8 @@ void usb_hstd_driver_registration(usb_utr_t* ptr, usb_hcdreg_t* callback)
         driver->devaddr    = USB_NODEVICE;         /* Device address */
         driver->devstate   = USB_DETACHED;         /* Device state */
         driver->ifclass    = callback->ifclass;    /* Interface Class */
+        driver->ifsubclass = callback->ifsubclass; /* Interface Subclass */
+        driver->ifprotocol = callback->ifprotocol; /* Interface Protocol */
         driver->p_tpl      = callback->p_tpl;      /* Target peripheral list */
         driver->p_pipetbl  = callback->p_pipetbl;  /* Pipe Define Table address */
         driver->classinit  = callback->classinit;  /* Driver init */
@@ -2112,7 +2116,8 @@ usb_err_t usb_hstd_hcd_open(usb_utr_t* ptr)
 
     for (i = USB_PIPE0; i <= USB_MAX_PIPE_NO; i++)
     {
-        g_p_usb_pipe[i] = (usb_utr_t*)USB_NULL;
+        g_p_usb_pipe[i]                     = (usb_utr_t*)USB_NULL;
+        g_usb_hstd_pipe_request[ptr->ip][i] = USB_OFF;
     }
 
 #if USB_CFG_BC == USB_CFG_ENABLE

@@ -68,6 +68,13 @@ bool receivingFromHost();
 /// Whether the host is currently collecting our audio
 bool sendingToHost();
 
+/// Feed audio captured while the Deluge is acting as a USB host into the same ring used by peripheral USB audio.
+/// The host class driver brackets packets with startHostedInput()/stopHostedInput(). Frames are interleaved stereo
+/// Q31 values, normally produced by hosted_audio::decodePcm().
+void startHostedInput();
+void stopHostedInput();
+void receiveHostedInput(std::span<const int32_t> interleavedStereo);
+
 /// Call before rendering a window. Fills the USB input ring, from where it left off up to numSamples beyond
 /// rxPosition (the SSI RX buffer position the render starts at - AudioEngine::i2sRXBufferPos), with whatever has
 /// arrived from the host - or silence, if nothing's streaming. txQueued is how many frames are already waiting in the

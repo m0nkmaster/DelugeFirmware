@@ -74,6 +74,10 @@ file(GLOB_RECURSE deluge_SOURCES
         ../../src/deluge/io/midi/midi_queue.cpp
         # For FFT magnitude tests
         ../../src/deluge/util/fast_pythag.cpp
+        # For hosted USB Audio descriptor and sample conversion tests
+        ../../src/deluge/drivers/usb/hosted_audio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp
+        ../../src/deluge/drivers/usb/usb_mode.cpp
 )
 
 add_executable(UnitTests
@@ -100,6 +104,8 @@ add_executable(UnitTests
         midi_queue_tests.cpp
         fast_pythag_tests.cpp
         tick_interpolation_tests.cpp
+        hosted_audio_tests.cpp
+        usb_host_driver_tests.cpp
 )
 add_test(NAME UnitTests
         COMMAND UnitTests)
