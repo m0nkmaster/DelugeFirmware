@@ -196,8 +196,14 @@ int32_t spibsc_common_init(uint32_t ch_no, uint32_t bsz, uint8_t spbr, uint8_t b
  ******************************************************************************/
 void spibsc_wait_tend(uint32_t ch_no)
 {
+    /* Bound the wait so a stuck SPIBSC cannot hang the system forever. */
+    uint32_t timeout = 10000000U;
     while (RZA_IO_RegRead_32(&SPIBSC[ch_no]->CMNSR, SPIBSC_CMNSR_TEND_SHIFT, SPIBSC_CMNSR_TEND) != SPIBSC_TRANS_END)
     {
+        if (--timeout == 0U)
+        {
+            break;
+        }
         routineForSD();
     }
 
