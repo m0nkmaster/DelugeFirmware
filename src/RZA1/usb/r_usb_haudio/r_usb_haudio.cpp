@@ -51,9 +51,11 @@ uint16_t pipeTable[USB_EPL + 1] = {
 };
 
 std::optional<deluge::hosted_audio::InputStream> selectedStream;
-uint16_t deviceAddress = USB_NODEVICE;
-uint16_t deviceSpeed   = USB_NOCONNECT;
-bool streaming         = false;
+uint16_t deviceAddress              = USB_NODEVICE;
+uint16_t deviceSpeed                = USB_NOCONNECT;
+bool streaming                      = false;
+usb_host_audio_status_t audioStatus = USB_HOST_AUDIO_IDLE;
+uint32_t receivedPackets            = 0;
 
 alignas(4) std::array<uint8_t, kMaxPacketBytes + 1> packetBuffer;
 PLACE_SDRAM_BSS std::array<int32_t, kMaxDecodedSamples> decodedSamples;
@@ -107,7 +109,8 @@ void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     if (transfer->status != USB_DATA_READING)
     {
         // In particular, detach/forced termination must not submit another transfer to a disappearing device.
-        streaming = false;
+        streaming   = false;
+        audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
         deluge::usb_audio::stopHostedInput();
         return;
     }
@@ -117,6 +120,8 @@ void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     size_t frameBytes  = selectedStream->channels * selectedStream->subslotBytes;
     if (received != 0 && received % frameBytes == 0)
     {
+        ++receivedPackets;
+        audioStatus   = USB_HOST_AUDIO_RECEIVING;
         size_t frames = deluge::hosted_audio::decodePcm(
             std::span<const uint8_t>{packetBuffer.data(), received}, *selectedStream, decodedSamples);
         deluge::usb_audio::receiveHostedInput(std::span<const int32_t>{decodedSamples.data(), frames * 2});
@@ -143,7 +148,8 @@ void queuePacket()
 
     if (usb_hstd_transfer_start(&streamTransfer) != USB_OK)
     {
-        streaming = false;
+        streaming   = false;
+        audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
         deluge::usb_audio::stopHostedInput();
         D_PRINTLN("USB host audio: failed to queue capture packet");
     }
@@ -155,7 +161,8 @@ void startStreaming()
     {
         return;
     }
-    streaming = true;
+    streaming   = true;
+    audioStatus = USB_HOST_AUDIO_WAITING_PACKETS;
     deluge::usb_audio::startHostedInput();
     queuePacket();
 }
@@ -173,6 +180,7 @@ void sampleRateReadComplete(usb_utr_t* transfer, uint16_t, uint16_t)
                           | static_cast<uint32_t>(sampleRateData[3]) << 24;
     if (transfer->status != USB_CTRL_END || transfer->tranlen != 0 || actualRate != selectedStream->sampleRate)
     {
+        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
         D_PRINTLN("USB host audio: device rejected 44.1kHz clock");
         return;
     }
@@ -194,6 +202,7 @@ void sampleRateComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     }
     if (transfer->status != USB_CTRL_END)
     {
+        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
         D_PRINTLN("USB host audio: sample-rate request failed");
         return;
     }
@@ -222,6 +231,7 @@ void readSampleRate(usb_utr_t* ptr)
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
         D_PRINTLN("USB host audio: couldn't read sample rate");
+        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
 
@@ -255,13 +265,19 @@ void setSampleRate(usb_utr_t* ptr)
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
         D_PRINTLN("USB host audio: couldn't set sample rate");
+        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
 
 void setInterfaceComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 {
-    if (!selectedStream || deviceAddress == USB_NODEVICE || transfer->status != USB_CTRL_END)
+    if (!selectedStream || deviceAddress == USB_NODEVICE)
     {
+        return;
+    }
+    if (transfer->status != USB_CTRL_END)
+    {
+        audioStatus = USB_HOST_AUDIO_INTERFACE_ERROR;
         return;
     }
     if (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC1
@@ -292,18 +308,34 @@ void selectStreamingInterface(usb_utr_t* ptr)
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
         D_PRINTLN("USB host audio: couldn't select streaming interface");
+        audioStatus = USB_HOST_AUDIO_INTERFACE_ERROR;
     }
 }
 
 void classCheck(usb_utr_t* ptr, uint16_t** table)
 {
     *table[3] = USB_ERROR;
-    if (deviceAddress != USB_NODEVICE || *table[6] != USB_FSCONNECT
-        || (g_usb_hstd_use_pipe[ptr->ip] & USB_BITSET(kAudioPipe)))
+    if (deviceAddress != USB_NODEVICE)
     {
-        return; // One capture stream; never overwrite a pipe already allocated to a MIDI device.
+        return; // Do not overwrite the status of an already selected device.
     }
-    auto* configuration    = reinterpret_cast<uint8_t*>(table[1]);
+    audioStatus     = USB_HOST_AUDIO_UNSUPPORTED;
+    receivedPackets = 0;
+    if (*table[6] != USB_FSCONNECT)
+    {
+        return;
+    }
+    if (g_usb_hstd_use_pipe[ptr->ip] & USB_BITSET(kAudioPipe))
+    {
+        audioStatus = USB_HOST_AUDIO_PIPE_IN_USE;
+        return;
+    }
+    auto* configuration = reinterpret_cast<uint8_t*>(table[1]);
+    if (configurationLength(configuration) > USB_CONFIGSIZE)
+    {
+        audioStatus = USB_HOST_AUDIO_CONFIG_TOO_LARGE;
+        return;
+    }
     auto* controlInterface = reinterpret_cast<uint8_t*>(table[2]);
     uint16_t length        = std::min<uint16_t>(configurationLength(configuration), USB_CONFIGSIZE);
     selectedStream         = deluge::hosted_audio::findInputStream(
@@ -334,6 +366,7 @@ void classCheck(usb_utr_t* ptr, uint16_t** table)
     }
 
     deviceAddress = *table[7];
+    audioStatus   = USB_HOST_AUDIO_CONFIGURING;
     *table[3]     = USB_OK;
     usb_hstd_return_enu_mgr(ptr, USB_OK);
 }
@@ -394,9 +427,20 @@ extern "C" void usb_hstd_audio_register(usb_utr_t* ptr)
 
 extern "C" void usb_hstd_audio_stop(void)
 {
-    streaming = false;
+    streaming       = false;
+    audioStatus     = USB_HOST_AUDIO_IDLE;
+    receivedPackets = 0;
     deluge::usb_audio::stopHostedInput();
     selectedStream.reset();
     deviceAddress = USB_NODEVICE;
     deviceSpeed   = USB_NOCONNECT;
+}
+
+extern "C" usb_host_audio_status_t usb_hstd_audio_status(void)
+{
+    return audioStatus;
+}
+extern "C" uint32_t usb_hstd_audio_packet_count(void)
+{
+    return receivedPackets;
 }

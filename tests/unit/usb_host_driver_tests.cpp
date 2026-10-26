@@ -3,6 +3,7 @@
 extern "C" {
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
 #include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_extern.h"
+#include "RZA1/usb/r_usb_basic/src/hw/inc/r_usb_bitdefine.h"
 #include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP]{};
 extern volatile uint32_t usbLock;
@@ -25,6 +26,15 @@ unsigned enumerationReplies = 0;
 unsigned pipeRegistrations = 0;
 bool inputRunning = false;
 bool externalVbus = false;
+uint16_t peripheralState = USB_DS_POWR;
+bool openFails = false;
+bool requestDeviceDuringOpen = false;
+unsigned roleCallbacks = 0;
+deluge::usb::ModeChangeResult lastRoleResult = deluge::usb::ModeChangeResult::Success;
+void roleChanged(deluge::usb::ModeChangeResult result) {
+	++roleCallbacks;
+	lastRoleResult = result;
+}
 std::vector<int32_t> capturedSamples;
 std::vector<int> roleChanges;
 
@@ -107,13 +117,17 @@ usb_er_t usb_hstd_transfer_start(usb_utr_t* transfer) {
 	pending = transfer;
 	return USB_OK;
 }
-uint16_t usb_pstd_chk_vbsts() {
-	return externalVbus ? USB_ATTACH : USB_DETACH;
+uint16_t hw_usb_read_intsts() {
+	return (externalVbus ? USB_VBSTS : 0) | peripheralState;
 }
 void openUSBHost() {
 	roleChanges.push_back(2);
 	g_usb_usbmode = USB_HOST;
-	usbCurrentlyInitialized = 1;
+	usbCurrentlyInitialized = !openFails;
+	if (requestDeviceDuringOpen) {
+		requestDeviceDuringOpen = false;
+		deluge::usb::requestHostMode(false, roleChanged);
+	}
 }
 void closeUSBHost() {
 	roleChanges.push_back(3);
@@ -122,7 +136,7 @@ void closeUSBHost() {
 void openUSBPeripheral() {
 	roleChanges.push_back(4);
 	g_usb_usbmode = USB_PERI;
-	usbCurrentlyInitialized = 1;
+	usbCurrentlyInitialized = !openFails;
 }
 void closeUSBPeripheral() {
 	roleChanges.push_back(1);
@@ -151,6 +165,12 @@ usbLock = 0;
 usbCurrentlyInitialized = 1;
 g_usb_usbmode = USB_PERI;
 externalVbus = false;
+peripheralState = USB_DS_POWR;
+openFails = false;
+requestDeviceDuringOpen = false;
+roleCallbacks = 0;
+deluge::usb::requestHostMode(false, nullptr);
+deluge::usb::processPendingModeChange();
 capturedSamples.clear();
 roleChanges.clear();
 usb_hstd_audio_register(&context);
@@ -218,6 +238,7 @@ TEST(UsbHostDriver, DoesNotStealMidiPipe) {
 	CHECK_EQUAL(USB_ERROR, checkDevice(uac1));
 	CHECK_EQUAL(0, enumerationReplies);
 	CHECK_EQUAL(0, pipeRegistrations);
+	CHECK_EQUAL(USB_HOST_AUDIO_PIPE_IN_USE, usb_hstd_audio_status());
 }
 
 TEST(UsbHostDriver, WritableUac2SetsThenVerifiesClockBeforeSelectingInterface) {
@@ -251,6 +272,7 @@ TEST(UsbHostDriver, ClockMismatchDoesNotStartAudio) {
 	completeControl();
 	completeControl(USB_CTRL_END, 48000);
 	CHECK_FALSE(inputRunning);
+	CHECK_EQUAL(USB_HOST_AUDIO_CLOCK_ERROR, usb_hstd_audio_status());
 	CHECK(pendingControl == nullptr);
 	CHECK(pendingPacket == nullptr);
 }
@@ -276,6 +298,7 @@ TEST(UsbHostDriver, FailedInterfaceRequestDoesNotStartAudio) {
 	configure(uac1);
 	completeControl(USB_DATA_STALL);
 	CHECK_FALSE(inputRunning);
+	CHECK_EQUAL(USB_HOST_AUDIO_INTERFACE_ERROR, usb_hstd_audio_status());
 	CHECK(pendingPacket == nullptr);
 }
 
@@ -320,9 +343,9 @@ TEST(UsbHostDriver, ClosingSessionCancelsAnOutstandingControlSequence) {
 }
 
 TEST(UsbHostDriver, RoleSwitchClosesOldRoleBeforeOpeningNewRole) {
-	CHECK(deluge::usb::setHostMode(true));
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
 	CHECK(deluge::usb::hostMode());
-	CHECK(deluge::usb::setHostMode(false));
+	CHECK(deluge::usb::setHostMode(false) == deluge::usb::ModeChangeResult::Success);
 	CHECK_FALSE(deluge::usb::hostMode());
 	CHECK_EQUAL(4, roleChanges.size());
 	for (size_t i = 0; i < roleChanges.size(); ++i) {
@@ -331,14 +354,104 @@ TEST(UsbHostDriver, RoleSwitchClosesOldRoleBeforeOpeningNewRole) {
 	CHECK_EQUAL(0, usbLock);
 }
 
-TEST(UsbHostDriver, ExternalVbusAndBusyUsbPreventRoleSwitch) {
+TEST(UsbHostDriver, EnumeratingHostAndBusyUsbPreventImmediateRoleSwitch) {
 	externalVbus = true;
-	CHECK_FALSE(deluge::usb::setHostMode(true));
+	peripheralState = USB_DS_DFLT;
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HostConnected);
 	CHECK(roleChanges.empty());
 	CHECK_EQUAL(0, usbLock);
 	externalVbus = false;
 	usbLock = 1;
-	CHECK_FALSE(deluge::usb::setHostMode(true));
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Busy);
 	CHECK_EQUAL(1, usbLock);
 	CHECK(roleChanges.empty());
+}
+
+TEST(UsbHostDriver, UsbVoltageAloneDoesNotIdentifyAnExternalHost) {
+	externalVbus = true;
+	peripheralState = USB_DS_SPD_POWR;
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::hostMode());
+}
+
+TEST(UsbHostDriver, SuspendedConfiguredComputerPreventsHostMode) {
+	externalVbus = true;
+	peripheralState = USB_DS_SPD_CNFG;
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HostConnected);
+	CHECK(roleChanges.empty());
+}
+
+TEST(UsbHostDriver, QueuedRoleChangeWaitsForUsbLockAndReportsResult) {
+	usbLock = 1;
+	deluge::usb::requestHostMode(true, roleChanged);
+	deluge::usb::processPendingModeChange();
+	CHECK(roleChanges.empty());
+	CHECK_EQUAL(0, roleCallbacks);
+	CHECK(deluge::usb::requestedHostMode());
+	usbLock = 0;
+	deluge::usb::processPendingModeChange();
+	CHECK(deluge::usb::hostMode());
+	CHECK_EQUAL(1, roleCallbacks);
+	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::Success);
+	deluge::usb::processPendingModeChange();
+	CHECK_EQUAL(1, roleCallbacks);
+}
+
+TEST(UsbHostDriver, MostRecentQueuedRoleWins) {
+	deluge::usb::requestHostMode(true, roleChanged);
+	deluge::usb::requestHostMode(false, roleChanged);
+	deluge::usb::processPendingModeChange();
+	CHECK(roleChanges.empty());
+	CHECK_FALSE(deluge::usb::requestedHostMode());
+	CHECK_EQUAL(1, roleCallbacks);
+}
+
+TEST(UsbHostDriver, ControllerStartFailureHasItsOwnResult) {
+	openFails = true;
+	deluge::usb::requestHostMode(true, roleChanged);
+	deluge::usb::processPendingModeChange();
+	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::StartFailed);
+	CHECK_FALSE(deluge::usb::hostMode());
+	CHECK_EQUAL(0, usbLock);
+}
+
+TEST(UsbHostDriver, RequestDuringControllerOpenIsPreserved) {
+	requestDeviceDuringOpen = true;
+	deluge::usb::requestHostMode(true, roleChanged);
+	deluge::usb::processPendingModeChange();
+	CHECK(deluge::usb::hostMode());
+	CHECK_FALSE(deluge::usb::requestedHostMode());
+	CHECK_EQUAL(0, roleCallbacks);
+	deluge::usb::processPendingModeChange();
+	CHECK_FALSE(deluge::usb::hostMode());
+	CHECK_EQUAL(1, roleCallbacks);
+}
+
+TEST(UsbHostDriver, OversizedConfigurationHasADistinctStatus) {
+	auto descriptor = uac1;
+	descriptor[2] = 1;
+	descriptor[3] = 4; // 1025 bytes exceeds the configuration buffer.
+	CHECK_EQUAL(USB_ERROR, checkDevice(descriptor));
+	CHECK_EQUAL(USB_HOST_AUDIO_CONFIG_TOO_LARGE, usb_hstd_audio_status());
+	CHECK_EQUAL(0, enumerationReplies);
+}
+
+TEST(UsbHostDriver, AudioStatusDistinguishesRoleFromStreamProgress) {
+	CHECK_EQUAL(USB_HOST_AUDIO_IDLE, usb_hstd_audio_status());
+	configure(uac1);
+	CHECK_EQUAL(USB_HOST_AUDIO_CONFIGURING, usb_hstd_audio_status());
+	completeControl();
+	CHECK_EQUAL(USB_HOST_AUDIO_WAITING_PACKETS, usb_hstd_audio_status());
+	CHECK_EQUAL(0, usb_hstd_audio_packet_count());
+	auto* transfer = pendingPacket;
+	pendingPacket = nullptr;
+	std::fill_n(static_cast<uint8_t*>(transfer->p_tranadr), 6, 0);
+	transfer->tranlen -= 6;
+	transfer->status = USB_DATA_READING;
+	transfer->complete(transfer, 0, 0);
+	CHECK_EQUAL(USB_HOST_AUDIO_RECEIVING, usb_hstd_audio_status());
+	CHECK_EQUAL(1, usb_hstd_audio_packet_count());
+	usb_hstd_audio_stop();
+	CHECK_EQUAL(USB_HOST_AUDIO_IDLE, usb_hstd_audio_status());
+	CHECK_EQUAL(0, usb_hstd_audio_packet_count());
 }

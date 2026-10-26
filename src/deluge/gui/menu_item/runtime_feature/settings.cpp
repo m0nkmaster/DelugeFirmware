@@ -19,6 +19,7 @@
 #include "devSysexSetting.h"
 #include "emulated_display.h"
 #include "gui/menu_item/usb/audio.h"
+#include "gui/menu_item/usb/host_status.h"
 #include "hid/display/display.h"
 #include "hid/display/oled_canvas/canvas.h"
 #include "setting.h"
@@ -77,9 +78,11 @@ RoundedCornersSettingToggle menuRoundedCorners(RuntimeFeatureSettingType::Rounde
 Setting menuShortcutOverlay(RuntimeFeatureSettingType::ShortcutOverlay);
 // A session-only hardware role switch, so it is not serialized with the feature preferences.
 usb::HostMode menuUsbHostMode{l10n::String::STRING_FOR_USB_HOST_MODE, l10n::String::STRING_FOR_USB_HOST_MODE};
+usb::HostStatus menuUsbHostStatus{l10n::String::STRING_FOR_USB_HOST_AUDIO_STATUS};
 
-std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings + 1> subMenuEntries{
+std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings + 2> subMenuEntries{
     &menuUsbHostMode,
+    &menuUsbHostStatus,
     &menuDrumRandomizer,
     &menuFineTempo,
     &menuQuantize,

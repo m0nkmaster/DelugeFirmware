@@ -129,10 +129,18 @@ Deluge. This is separate from using the Deluge as your computer's audio interfac
 3. Turn on `SETTINGS > COMMUNITY FEATURES > USB HOST (DC POWER)` (`HOST` on 7SEG).
 4. Choose `USB INPUT` as the audio clip's source and use `SAMPLER` or `LOOPER` to monitor it.
 
-The host switch takes effect without restarting the Deluge. It reconnects the USB session, interrupting any USB
-MIDI or audio in progress. It is a session-only switch: the next boot uses the normal USB role detection. The switch
-refuses to enable host mode while external USB power is detected. The firmware cannot reliably detect whether the
-DC supply is connected, so connect it before enabling host mode.
+The host switch takes effect without restarting the Deluge, once the current USB operation finishes. It reconnects
+the USB session, interrupting any USB MIDI or audio in progress. It is a session-only switch: the next boot uses the
+normal USB role detection. The switch refuses host mode when peripheral enumeration by another host is detected.
+USB voltage alone cannot identify where power comes from, and the firmware cannot reliably detect whether the DC
+supply is connected. Connect DC and disconnect any computer before enabling host mode. The role switch does not
+control the hardware's USB power output.
+
+The checkbox reports the USB role, not whether an audio device is streaming. Open
+`SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO STATUS` (`USTA` on 7SEG) to check capture startup. It distinguishes
+unsupported formats, clock/interface setup errors, waiting for packets, and stopped transfers. On OLED, the packet
+counter updates live; on 7SEG, reopen the page to refresh the count. Receiving packets does not necessarily mean
+they contain an audible signal. To hear USB input through an audio clip, use `SAMPLER` or `LOOPER` monitoring.
 
 Support is currently limited to one full-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. UAC2 requires a
 terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
@@ -140,7 +148,7 @@ is duplicated to stereo; for larger streams, the first two channels are used. Se
 sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
 
 <Aside type="caution">
-  TONEX ONE streaming and power delivery have not been verified on hardware. The host switch enables the Deluge's
-  existing USB power output; it cannot increase the hardware's available current. This is not yet universal USB
-  audio compatibility.
+  TONEX ONE streaming and power delivery have not been verified as working on hardware. USB power depends on the
+  Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
+  USB audio compatibility.
 </Aside>
