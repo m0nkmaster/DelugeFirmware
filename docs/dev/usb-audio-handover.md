@@ -49,8 +49,9 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
 - A live source needs `USB INPUT` on an audio clip and `SAMPLER` or `LOOPER` monitoring. `PLAYER` does not monitor.
 - Direct synth/kit sampling does not yet have a source selector. `AudioRecorder::opened()` in
   `src/deluge/gui/ui/audio_recorder.cpp` hard-codes the analogue input (stereo when a mic/line plug is detected,
-  otherwise left/mono). USB can instead be recorded into an audio clip and its resulting sample loaded into a kit
-  row. Adding USB selection to the direct sampler is outstanding work, not part of the high-speed fix.
+  otherwise left/mono). USB can instead be recorded into an audio clip, the song saved, and its resulting sample
+  loaded into a kit row. Saving moves the recording out of the browser-blocked `SAMPLES/CLIPS/TEMP` folder. Adding
+  USB selection to the direct sampler is outstanding work, not part of the high-speed fix.
 
 ### Supported audio subset
 
@@ -286,3 +287,28 @@ separate recorder still automatically selects analogue line/mic input; it has no
 
 Complete recording/playback checks, load performance, power delivery and high-speed MIDI/hub compatibility remain
 unverified. Update this section after each device test, distinguishing reported observations from assumptions.
+
+### Successful recording report and temporary-file investigation
+
+The user subsequently reports: “It's all working really well” and confirms recorded audio clips, but could not find
+`REC00096.WAV` in the sample browser. The specific TONEX model remains unidentified. This supersedes the tentative
+audible-operation report above; it does not verify both models or the remaining load/MIDI/hub checks.
+
+Read-only SD inspection found `SAMPLES/CLIPS/TEMP/REC00096.WAV`: a readable stereo 24-bit, 44100Hz WAV, 48.404 seconds,
+12,807,686 bytes. Separate files of the same name exist in RECORD (mono, 60.415s) and RESAMPLE (stereo, 4s); those are
+different recordings. The missing browser entry is explained by normal temporary-file handling, not missing audio.
+`SampleBrowser::enterKeyPress()` blocks TEMP; `SaveSongUI` moves used temporary samples into their permanent paths.
+The earlier workaround instructions omitted the required song-save step; they are now corrected.
+
+The TEMP tree contains 62 audio WAV files plus two 4096-byte AppleDouble `._` metadata files, totaling 136,283,129 bytes.
+There are mono/stereo REC files and named-song folders including IntMic recordings. This is not all new USB material.
+Clearing/loading a song drops temporary sample objects from memory, without sweeping all the completed files from
+TEMP on disk. Unsaved or discarded takes can remain. Numeric temporary recording filenames may later be overwritten;
+TEMP must not be treated as a permanent archive or indiscriminately deleted.
+
+A verified Mac backup of REC00096 is at
+`build/usb-diagnostics/recovered-samples/REC00096-f95380c9216a.WAV`, SHA-256
+`f95380c9216a7353181289b037859f4f5607f74821d0e976d7623ecc0d0b9ca2`.
+An approval request to create a separate browsable copy at `SAMPLES/USB_RECORDINGS/REC00096.WAV` was interrupted by
+the user. Subsequent inspection confirmed that destination does not exist. No copy to that location is claimed and no
+temporary recordings were moved or deleted. The SD remains mounted for inspection; safely eject it before removal.
