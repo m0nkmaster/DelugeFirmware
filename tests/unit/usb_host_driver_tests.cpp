@@ -6,20 +6,27 @@ extern "C" {
 #include "RZA1/usb/r_usb_basic/src/hw/inc/r_usb_bitdefine.h"
 #include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP]{};
+uint16_t fifoSels[5]{};
 extern volatile uint32_t usbLock;
 uint16_t g_usb_usbmode = USB_PERI;
 uint8_t usbCurrentlyInitialized = 1;
 }
 
 #include "drivers/usb/usb_mode.h"
+#include "fixtures/tonex_usb_descriptors.h"
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 namespace {
 usb_hcdreg_t registeredDriver{};
 usb_utr_t context{};
+std::remove_volatile_t<std::remove_pointer_t<usb_regadr_t>> registerBank{};
+std::vector<std::vector<uint8_t>> fifoPackets;
+size_t nextFifoPacket = 0;
 usb_utr_t* pendingControl = nullptr;
 usb_utr_t* pendingPacket = nullptr;
 unsigned enumerationReplies = 0;
@@ -49,13 +56,12 @@ constexpr std::array<uint8_t, 76> uac2{
     1,  1,    0,  0, 0, 2, 3, 0,    0,  0, 0, 6, 0x24, 2, 1, 4, 24,   7, 5, 0x83, 5,    0x80, 1,    1,
 };
 
-uint16_t checkDevice(std::span<const uint8_t> configuration) {
+uint16_t checkDevice(std::span<const uint8_t> configuration, uint16_t speed = USB_FSCONNECT, size_t controlOffset = 9) {
 	uint16_t result = USB_ERROR;
-	uint16_t speed = USB_FSCONNECT;
 	uint16_t address = 1;
 	uint16_t* table[9]{};
 	table[1] = reinterpret_cast<uint16_t*>(const_cast<uint8_t*>(configuration.data()));
-	table[2] = reinterpret_cast<uint16_t*>(const_cast<uint8_t*>(configuration.data() + 9));
+	table[2] = reinterpret_cast<uint16_t*>(const_cast<uint8_t*>(configuration.data() + controlOffset));
 	table[3] = &result;
 	table[6] = &speed;
 	table[7] = &address;
@@ -63,9 +69,15 @@ uint16_t checkDevice(std::span<const uint8_t> configuration) {
 	return result;
 }
 
-void configure(std::span<const uint8_t> configuration) {
-	CHECK_EQUAL(USB_OK, checkDevice(configuration));
+void configure(std::span<const uint8_t> configuration, uint16_t speed = USB_FSCONNECT, size_t controlOffset = 9) {
+	CHECK_EQUAL(USB_OK, checkDevice(configuration, speed, controlOffset));
 	registeredDriver.devconfig(&context, 1, 0);
+}
+
+void queueFifoPackets(std::initializer_list<std::vector<uint8_t>> packets) {
+	fifoPackets = packets;
+	nextFifoPacket = 0;
+	registerBank.D1FIFOCTR = USB_FRDY | fifoPackets.front().size();
 }
 
 void completeControl(uint16_t status = USB_CTRL_END, uint32_t rate = 44100, uint32_t remaining = 0) {
@@ -86,6 +98,18 @@ void completeControl(uint16_t status = USB_CTRL_END, uint32_t rate = 44100, uint
 } // namespace
 
 extern "C" {
+void usb_cstd_clr_transaction_counter(usb_utr_t*, uint16_t pipe) {
+	CHECK_EQUAL(USB_PIPE2, pipe);
+}
+uint8_t* usb_hstd_read_fifo(usb_utr_t* ptr, uint16_t count, uint16_t port, uint8_t* destination) {
+	CHECK_EQUAL(USB_D1USE, port);
+	CHECK(nextFifoPacket < fifoPackets.size());
+	const auto& packet = fifoPackets[nextFifoPacket++];
+	CHECK_EQUAL(packet.size(), count);
+	std::copy(packet.begin(), packet.end(), destination);
+	ptr->ipp->D1FIFOCTR = nextFifoPacket < fifoPackets.size() ? USB_FRDY | fifoPackets[nextFifoPacket].size() : 0;
+	return destination + count;
+}
 void usb_hstd_driver_registration(usb_utr_t*, usb_hcdreg_t* driver) {
 	registeredDriver = *driver;
 }
@@ -99,7 +123,7 @@ usb_regadr_t usb_hstd_get_usb_ip_adr(uint16_t) {
 	return nullptr;
 }
 uint16_t usb_hstd_chk_pipe_info(uint16_t, uint16_t* table, uint8_t* endpoint) {
-	table[1] = USB_TYPFIELD_ISO | USB_DIR_H_IN | (endpoint[2] & 0x0f);
+	table[1] = (table[1] & USB_DBLBFIELD) | USB_TYPFIELD_ISO | USB_DIR_H_IN | (endpoint[2] & 0x0f);
 	table[3] = endpoint[4] | endpoint[5] << 8;
 	return USB_DIR_H_IN;
 }
@@ -157,6 +181,10 @@ void receiveHostedInput(std::span<const int32_t> samples) {
 } // namespace deluge::usb_audio
 
 TEST_GROUP(UsbHostDriver){void setup() override{pendingControl = nullptr;
+std::memset(&registerBank, 0, sizeof(registerBank));
+context.ipp = &registerBank;
+fifoPackets.clear();
+nextFifoPacket = 0;
 pendingPacket = nullptr;
 enumerationReplies = 0;
 pipeRegistrations = 0;
@@ -180,6 +208,7 @@ void teardown() override {
 	usbLock = 0;
 	std::vector<int32_t>().swap(capturedSamples);
 	std::vector<int>().swap(roleChanges);
+	std::vector<std::vector<uint8_t>>().swap(fifoPackets);
 }
 }
 ;
@@ -454,4 +483,92 @@ TEST(UsbHostDriver, AudioStatusDistinguishesRoleFromStreamProgress) {
 	usb_hstd_audio_stop();
 	CHECK_EQUAL(USB_HOST_AUDIO_IDLE, usb_hstd_audio_status());
 	CHECK_EQUAL(0, usb_hstd_audio_packet_count());
+}
+
+TEST(UsbHostDriver, TonexHighSpeedCapturesBothFifoPlanesWithoutTaskTransfers) {
+	configure(usb_audio_fixtures::tonexOne, USB_HSCONNECT, 83);
+	CHECK_EQUAL(0x0702, pendingControl->p_setup[2]); // Clock 7 on AudioControl interface 2.
+	completeControl();                               // SET_CUR
+	completeControl();                               // GET_CUR
+	CHECK_EQUAL(3, pendingControl->p_setup[2]);      // Select capture interface, not CDC or playback.
+	CHECK_EQUAL(1, pendingControl->p_setup[1]);
+	completeControl(); // SET_INTERFACE
+	CHECK(inputRunning);
+	CHECK(pendingPacket == nullptr); // No 125us audio requests go through the cooperative message queue.
+	CHECK_EQUAL(USB_PID_BUF, registerBank.PIPE2CTR & USB_PID);
+	CHECK(registerBank.BRDYENB & USB_BITSET(USB_PIPE2));
+	registerBank.CFIFOSEL = 5;
+	registerBank.PIPESEL = 4;
+	std::vector<uint8_t> sixFrames(48);
+	std::vector<uint8_t> fiveFrames(40);
+	for (size_t i = 0; i < sixFrames.size(); i += 8) {
+		sixFrames[i + 3] = 0x40;
+		sixFrames[i + 7] = 0xc0;
+	}
+	queueFifoPackets({sixFrames, fiveFrames});
+	CHECK_EQUAL(USB_BITSET(USB_PIPE2), usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2) | USB_BRDY0));
+	CHECK_EQUAL(2, usb_hstd_audio_packet_count());
+	CHECK_EQUAL(22, capturedSamples.size());
+	CHECK_EQUAL(0x40000000, capturedSamples[0]);
+	CHECK_EQUAL(static_cast<int32_t>(0xc0000000u), capturedSamples[1]);
+	CHECK_EQUAL(USB_HOST_AUDIO_RECEIVING, usb_hstd_audio_status());
+	CHECK_EQUAL(5, registerBank.CFIFOSEL);
+	CHECK_EQUAL(4, registerBank.PIPESEL);
+	CHECK_EQUAL(USB_PID_BUF, registerBank.PIPE2CTR & USB_PID); // Still armed, including after short packets.
+	CHECK(pendingPacket == nullptr);
+}
+
+TEST(UsbHostDriver, TonexPlugAlsoStartsAtHighSpeedAndStopsOnDetach) {
+	configure(usb_audio_fixtures::tonexPlug, USB_HSCONNECT, 83);
+	completeControl();
+	completeControl();
+	completeControl();
+	CHECK_EQUAL(USB_HOST_AUDIO_WAITING_PACKETS, usb_hstd_audio_status());
+	usb_hstd_audio_detach_device(2); // Disconnecting another device must not stop this stream.
+	CHECK(inputRunning);
+	usb_hstd_audio_detach_device(1); // Called before HCD deconfigures PIPE2.
+	CHECK_FALSE(inputRunning);
+	CHECK_EQUAL(0, registerBank.BRDYENB & USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(USB_PID_NAK, registerBank.PIPE2CTR & USB_PID);
+	CHECK_EQUAL(0, registerBank.D1FIFOSEL & USB_CURPIPE);
+	queueFifoPackets({std::vector<uint8_t>(48)});
+	CHECK_EQUAL(0, usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2)));
+	CHECK(capturedSamples.empty());
+}
+
+TEST(UsbHostDriver, HighSpeedDiscardsPartialFramesAndStopsOnOversizedPackets) {
+	configure(usb_audio_fixtures::tonexOne, USB_HSCONNECT, 83);
+	completeControl();
+	completeControl();
+	completeControl();
+	queueFifoPackets({std::vector<uint8_t>(7)});
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK(capturedSamples.empty());
+	CHECK_EQUAL(0, usb_hstd_audio_packet_count());
+	CHECK(inputRunning);
+	queueFifoPackets({std::vector<uint8_t>(64)}); // The selected endpoint allows at most 56.
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(USB_HOST_AUDIO_TRANSFER_ERROR, usb_hstd_audio_status());
+	CHECK_FALSE(inputRunning);
+	CHECK_EQUAL(0, registerBank.BRDYENB & USB_BITSET(USB_PIPE2));
+	CHECK(capturedSamples.empty());
+}
+
+TEST(UsbHostDriver, HighSpeedIrqWorkIsBoundedAndIgnoresUnrelatedBits) {
+	configure(usb_audio_fixtures::tonexOne, USB_HSCONNECT, 83);
+	completeControl();
+	completeControl();
+	completeControl();
+	queueFifoPackets({std::vector<uint8_t>(48), std::vector<uint8_t>(48), std::vector<uint8_t>(48)});
+	CHECK_EQUAL(0, usb_hstd_audio_handle_brdy(&context, USB_BRDY0));
+	CHECK_EQUAL(0, nextFifoPacket);
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(2, nextFifoPacket);
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(3, usb_hstd_audio_packet_count());
+}
+
+TEST(UsbHostDriver, IsochronousAudioRejectsLowSpeed) {
+	CHECK_EQUAL(USB_ERROR, checkDevice(uac1, USB_LSCONNECT));
+	CHECK_EQUAL(0, enumerationReplies);
 }

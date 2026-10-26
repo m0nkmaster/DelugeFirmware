@@ -88,9 +88,10 @@ void openUSBHost(void)
     usb_ctrl_t ctrl;
     usb_cfg_t cfg;
 
-    ctrl.module   = WHICH_USB_MODULE;
-    ctrl.type     = USB_HHID;
-    cfg.usb_speed = USB_FS;
+    ctrl.module = WHICH_USB_MODULE;
+    ctrl.type   = USB_HHID;
+    // Negotiate high speed when the attached device supports it; FS/LS devices still use their native speed.
+    cfg.usb_speed = USB_HS;
     cfg.usb_mode  = USB_HOST;
     usb_err_t err = R_USB_Open(&ctrl, &cfg);
     if (USB_SUCCESS != err)

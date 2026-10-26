@@ -14,6 +14,10 @@ extern "C" {
 void usb_hstd_audio_register(usb_utr_t* ptr);
 // Called before closing host mode; cancels the class state before any outstanding transfers are torn down.
 void usb_hstd_audio_stop(void);
+// Release the selected audio device before the HCD clears its pipe configuration.
+void usb_hstd_audio_detach_device(uint16_t address);
+// Called directly from the USB ISR. Returns the BRDY bits consumed without posting a cooperative task message.
+uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits);
 
 typedef enum {
     USB_HOST_AUDIO_IDLE,
