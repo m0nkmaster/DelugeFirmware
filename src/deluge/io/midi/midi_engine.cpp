@@ -17,6 +17,7 @@
 
 #include "io/midi/midi_engine.h"
 #include "definitions_cxx.hpp"
+#include "drivers/usb/usb_mode.h"
 #include "gui/l10n/l10n.h"
 #include "gui/ui/sound_editor.h"
 #include "hid/display/display.h"
@@ -874,6 +875,7 @@ extern uint8_t currentlyAccessingCard;
 }
 
 void MidiEngine::check_incoming_usb() {
+	deluge::usb::processPendingModeChange();
 	bool usbLockNow = usbLock;
 
 	if (!usbLockNow) {
