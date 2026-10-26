@@ -56,6 +56,7 @@ uint8_t anythingEverAttachedAsUSBHost = 0;
 
 #include "definitions.h"
 extern uint32_t timeLastBRDY[];
+#include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 
 /***********************************************************************************************************************
  Function Name   : usb_hstd_interrupt_handler
@@ -89,8 +90,16 @@ int usb_hstd_interrupt_handler(usb_utr_t* ptr)
         uint16_t bsts;
 
         brdysts = ptr->ipp->BRDYSTS;
-        // brdyenb = ptr->ipp->BRDYENB;
-        bsts = brdysts; //(uint16_t)(brdysts & brdyenb);
+        brdyenb = ptr->ipp->BRDYENB;
+        bsts    = (uint16_t)(brdysts & brdyenb);
+
+        // High-speed audio cannot wait for the cooperative USB task. Its dedicated D1FIFO handler leaves
+        // CFIFO/PIPESEL untouched, and consumes only its own enabled bit even when PIPE0 or MIDI is ready too.
+        bsts &= (uint16_t)~usb_hstd_audio_handle_brdy(ptr, bsts & ptr->ipp->BRDYENB);
+        if (!bsts)
+        {
+            return 1;
+        }
 
         // Pipe 0
         if (bsts & USB_BRDY0)
@@ -352,6 +361,8 @@ void usb_hstd_detach_process(usb_utr_t* ptr, uint16_t port)
         addr = (uint16_t)(md << USB_DEVADDRBIT);
         if (usb_hstd_chk_dev_addr(ptr, addr, port) != USB_NOCONNECT)
         {
+            // The audio IRQ owns D1FIFO; release it before clearing/reusing PIPE2 registers.
+            usb_hstd_audio_detach_device(md);
             if (USB_IDLEST != g_usb_hstd_ctsq[ptr->ip])
             {
                 /* Control Read/Write End */

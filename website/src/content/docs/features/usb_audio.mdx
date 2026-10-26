@@ -142,13 +142,20 @@ unsupported formats, clock/interface setup errors, waiting for packets, and stop
 counter updates live; on 7SEG, reopen the page to refresh the count. Receiving packets does not necessarily mean
 they contain an audible signal. To hear USB input through an audio clip, use `SAMPLER` or `LOOPER` monitoring.
 
-Support is currently limited to one full-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. UAC2 requires a
+Support is currently limited to one full- or high-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. The host
+negotiates the device's bus speed. High-speed capture uses interrupt-driven reception for 125-microsecond packets;
+full-speed capture uses 1-millisecond packets. Only `bInterval=1` and one transaction per interval are supported.
+UAC2 requires a
 terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
 is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
 sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
 
 <Aside type="caution">
-  TONEX ONE streaming and power delivery have not been verified as working on hardware. USB power depends on the
+  Captured descriptors from TONEX ONE and TONEX Plug are covered by regression tests, but streaming on the Deluge
+  and power delivery have not been verified as working on hardware. USB power depends on the
   Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
   USB audio compatibility.
 </Aside>
+
+Development history, device captures, and the hardware test procedure are recorded in
+[`docs/dev/usb-audio-handover.md`](https://github.com/m0nkmaster/DelugeFirmware/blob/feat/usb-audio-host/docs/dev/usb-audio-handover.md).
