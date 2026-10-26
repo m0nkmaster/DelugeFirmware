@@ -75,6 +75,7 @@ file(GLOB_RECURSE deluge_SOURCES
         # For hosted USB Audio descriptor and sample conversion tests
         ../../src/deluge/drivers/usb/hosted_audio.cpp
         ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio_transport.c
         ../../src/deluge/drivers/usb/usb_mode.cpp
 )
 

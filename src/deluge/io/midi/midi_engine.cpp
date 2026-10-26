@@ -730,7 +730,9 @@ void MidiEngine::setupUSBHostReceiveTransfer(int32_t ip, int32_t midiDeviceNum) 
 	int32_t pipeNumber = g_usb_hmidi_tmp_ep_tbl[USB_CFG_USE_USBIP][midiDeviceNum][USB_EPL];
 
 	g_usb_midi_recv_utr[USB_CFG_USE_USBIP][midiDeviceNum].keyword = pipeNumber;
-	g_usb_midi_recv_utr[USB_CFG_USE_USBIP][midiDeviceNum].tranlen = 64;
+	// Arm one complete endpoint packet, including 512-byte high-speed bulk MIDI packets.
+	g_usb_midi_recv_utr[USB_CFG_USE_USBIP][midiDeviceNum].tranlen =
+	    g_usb_hmidi_tmp_ep_tbl[USB_CFG_USE_USBIP][midiDeviceNum][USB_EPL + 3] & USB_MXPS;
 
 	g_p_usb_pipe[pipeNumber] = &g_usb_midi_recv_utr[USB_CFG_USE_USBIP][midiDeviceNum];
 

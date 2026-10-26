@@ -108,7 +108,7 @@ int32_t decodeSample(const uint8_t* input, uint8_t subslotBytes, uint8_t bitReso
 } // namespace
 
 std::optional<InputStream> findInputStream(std::span<const uint8_t> configuration, uint32_t targetSampleRate,
-                                           uint8_t controlInterface) {
+                                           uint8_t controlInterface, BusSpeed speed) {
 	if (configuration.size() < 9 || configuration[0] != 9 || configuration[1] != kDescriptorConfiguration
 	    || targetSampleRate == 0) {
 		return std::nullopt;
@@ -247,8 +247,13 @@ std::optional<InputStream> findInputStream(std::span<const uint8_t> configuratio
 			}
 			{
 				uint16_t maxPacket = readLe16(&descriptor[4]);
-				uint32_t requiredBytes = ((targetSampleRate + 999) / 1000) * channels * subslotBytes;
-				if (maxPacket < requiredBytes || maxPacket > 1023) {
+				uint32_t intervalsPerSecond = speed == BusSpeed::High ? 8000 : 1000;
+				uint64_t requiredBytes =
+				    ((static_cast<uint64_t>(targetSampleRate) + intervalsPerSecond - 1) / intervalsPerSecond) * channels
+				    * subslotBytes;
+				// The upper bits encode extra HS transactions, which this receiver cannot service. Comparing the
+				// entire field also rejects reserved bits, rather than accidentally treating them as payload bytes.
+				if (maxPacket < requiredBytes || maxPacket > (speed == BusSpeed::High ? 1024 : 1023)) {
 					break;
 				}
 				InputStream candidate{

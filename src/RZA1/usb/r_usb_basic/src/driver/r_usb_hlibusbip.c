@@ -1213,7 +1213,7 @@ void usb_hstd_brdy_pipe_process_rohan_midi_and_hub(usb_utr_t* ptr, uint16_t bits
         if (bitsts & USB_BITSET(pipe))
         {
             // Audio pipes need the generic completion callback and their actual packet length. The MIDI fast path
-            // below assumes 64-byte packets and intentionally bypasses class callbacks.
+            // below intentionally bypasses class callbacks.
             if (usb_cstd_get_pipe_type(ptr, pipe) == USB_TYPFIELD_ISO)
             {
                 usb_hstd_brdy_pipe_process(ptr, USB_BITSET(pipe));
@@ -1300,7 +1300,7 @@ void usb_hstd_brdy_pipe_process_rohan_midi_and_hub(usb_utr_t* ptr, uint16_t bits
                                     { // Gotta check this - I can totally see something going wrong, with all the other
                                       // checks I'm now skipping!
                                         connectedUSBMIDIDevices[0][deviceNum].numBytesReceived =
-                                            64 - g_usb_data_cnt[pipe];
+                                            temp->tranlen - g_usb_data_cnt[pipe];
                                         // Warning - sometimes (with a Teensy, e.g. my knob box), length will be 0. Not
                                         // sure why - but we need to cope with that case.
 

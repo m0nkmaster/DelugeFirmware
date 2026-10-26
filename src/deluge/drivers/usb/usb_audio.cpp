@@ -122,7 +122,7 @@ std::atomic<uint32_t> toHostRead{0};
 std::atomic<int32_t> toHostTxOffset{-1};
 
 volatile bool fromHostStreaming = false;
-volatile bool hostedInputStreaming = false;
+std::atomic<bool> hostedInputStreaming{false};
 volatile bool toHostStreaming = false;
 volatile bool fromHostDmaBusy = false;
 volatile bool toHostDmaBusy = false;
