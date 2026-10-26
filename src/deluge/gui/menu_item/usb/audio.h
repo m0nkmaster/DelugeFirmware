@@ -43,16 +43,30 @@ public:
 class HostMode final : public Toggle {
 public:
 	using Toggle::Toggle;
-	void readCurrentValue() override { this->setValue(deluge::usb::hostMode()); }
+	void readCurrentValue() override { this->setValue(deluge::usb::requestedHostMode()); }
 	void writeCurrentValue() override {
 		bool enabled = this->getValue();
-		if (!deluge::usb::setHostMode(enabled)) {
-			readCurrentValue();
-			display->displayPopup(l10n::get(l10n::String::STRING_FOR_USB_MODE_UNAVAILABLE));
-		}
-		else if (enabled) {
-			display->displayPopup(l10n::get(l10n::String::STRING_FOR_DC_POWER_REQUIRED));
-		}
+		deluge::usb::requestHostMode(enabled, [](deluge::usb::ModeChangeResult result) {
+			using enum l10n::String;
+			using enum deluge::usb::ModeChangeResult;
+			auto message = STRING_FOR_USB_MODE_UNAVAILABLE;
+			switch (result) {
+			case Success:
+				message = deluge::usb::hostMode() ? STRING_FOR_DC_POWER_REQUIRED : STRING_FOR_USB_DEVICE_MODE;
+				break;
+			case HostConnected:
+				message = STRING_FOR_USB_HOST_CONNECTED;
+				break;
+			case StartFailed:
+				message = STRING_FOR_USB_START_FAILED;
+				break;
+			case Busy:
+				break;
+			}
+			display->displayPopup(l10n::get(message));
+			renderUIsForOled();
+		});
+		display->displayPopup(l10n::get(l10n::String::STRING_FOR_USB_MODE_SWITCHING));
 	}
 };
 

@@ -7,13 +7,20 @@
 
 namespace deluge::usb {
 
-/// True while the Deluge owns the bus and supplies USB VBUS. Host mode is deliberately not persisted: it must only
+/// True while the controller is in host mode. This does not report or control the hardware's USB power supply.
+/// Host mode is deliberately not persisted: it must only
 /// be enabled while the Deluge has external DC power and is not connected to another USB host.
 bool hostMode();
 
-/// Switch USB roles immediately. In host mode the controller remains active across device detach/attach, so a class
-/// compliant audio source can be hot-plugged without restarting the Deluge.
-/// Returns false if USB is busy, another host is supplying VBUS, or opening the new role fails.
-bool setHostMode(bool enabled);
+enum class ModeChangeResult { Success, Busy, HostConnected, StartFailed };
+/// Switch USB roles immediately, only from a context where the USB stack is not in use.
+/// VBUS alone does not identify a computer; reject when peripheral enumeration is also detected.
+ModeChangeResult setHostMode(bool enabled);
+
+/// Queue a menu request until the USB task can safely apply it. The latest pending request wins.
+using ModeChangeCallback = void (*)(ModeChangeResult);
+void requestHostMode(bool enabled, ModeChangeCallback callback);
+bool requestedHostMode();
+void processPendingModeChange();
 
 } // namespace deluge::usb
