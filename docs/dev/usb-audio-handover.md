@@ -47,6 +47,10 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
 - The Deluge's `hw_usb_set_vbout` and `hw_usb_clear_vbout` are no-ops. This firmware cannot switch the physical USB
   power rail, reliably detect the DC jack, or increase the current it supplies. `(DC POWER)` is a user reminder.
 - A live source needs `USB INPUT` on an audio clip and `SAMPLER` or `LOOPER` monitoring. `PLAYER` does not monitor.
+- Direct synth/kit sampling does not yet have a source selector. `AudioRecorder::opened()` in
+  `src/deluge/gui/ui/audio_recorder.cpp` hard-codes the analogue input (stereo when a mic/line plug is detected,
+  otherwise left/mono). USB can instead be recorded into an audio clip and its resulting sample loaded into a kit
+  row. Adding USB selection to the direct sampler is outstanding work, not part of the high-speed fix.
 
 ### Supported audio subset
 
@@ -188,7 +192,7 @@ electrical behavior, real BRDY/FRDY timing, or audio performance under load.
 
 See the final verification record below. Preserve the distinction between automated validation and hardware results.
 
-Hardware test procedure (still pending for the high-speed build):
+Hardware test procedure (packet reception reported below; complete recording/playback checks remain pending):
 
 1. Use the built `build/Release/deluge.bin`; record its SHA-256 and the branch commit. Follow the SD precautions below.
 2. Power the Deluge from DC and connect one TONEX directly with the host adapter and a known data cable.
@@ -272,6 +276,13 @@ Do not reuse those hashes for the new high-speed build. Generate a fresh build m
   its exact source commit and SHA-256 are recorded in `build/usb-diagnostics/high-speed-build.json` (local artifact).
 - No SD card was mounted during this update; no firmware was copied to a card in this step.
 
-Physical Deluge streaming, load performance, power delivery and high-speed MIDI/hub compatibility remain unverified.
-Update this section with actual observations after each device test; do not replace “unverified” with “working” solely
-because the parser, mocked transport tests, or firmware build passed.
+### User hardware follow-up after release `e2d67a61c`
+
+The user reports: “Now saying audio packets received. And I think it's working.” This is the first positive on-Deluge
+packet-reception report for the high-speed build. Audible operation is tentative; the message did not identify which
+TONEX model was connected or confirm a recorded clip/playback test. Do not mark both models verified from this report.
+The user then asked how to select USB while recording directly into a kit sample. Code inspection confirms that this
+separate recorder still automatically selects analogue line/mic input; it has no USB source selector.
+
+Complete recording/playback checks, load performance, power delivery and high-speed MIDI/hub compatibility remain
+unverified. Update this section after each device test, distinguishing reported observations from assumptions.
