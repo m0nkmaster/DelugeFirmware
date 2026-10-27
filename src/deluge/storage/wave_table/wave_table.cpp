@@ -436,10 +436,9 @@ gotError5:
 				value32 += (1 << 31);                                                                                  \
 			}                                                                                                          \
 		}                                                                                                              \
-		*(cycleBufferDestination++) =                                                                                  \
-		    value32 >> magnitudeReductionForFFT; /* Store full 32-bit value in cycle buffer (reduced in magnitude     \
-		                                             for FFT). */                                                      \
-		*(initialBandWritePos++) = value32 >> 16;   /* Bands only store 16-bit data. */                                \
+		/* Store full 32-bit value in cycle buffer (reduced in magnitude for FFT). */                                  \
+		*(cycleBufferDestination++) = value32 >> magnitudeReductionForFFT;                                             \
+		*(initialBandWritePos++) = value32 >> 16; /* Bands only store 16-bit data. */                                  \
 	}
 
 			// If previous Cluster had overlapping sample at end...
@@ -1077,8 +1076,8 @@ uint32_t WaveTable::render(int32_t* __restrict__ outputBuffer, int32_t numSample
 
 		int32_t lshiftAmountToGetCrossCycleStrength =
 		    32 + numCycleTransitionsNextPowerOf2Magnitude - NUM_BITS_IN_WAVE_INDEX_SCALED_INPUT; // Always positive.
-		int32_t crossCycleStrength2Increment = static_cast<int32_t>(
-		    static_cast<uint32_t>(waveIndexIncrementScaled) << lshiftAmountToGetCrossCycleStrength);
+		int32_t crossCycleStrength2Increment = static_cast<int32_t>(static_cast<uint32_t>(waveIndexIncrementScaled)
+		                                                            << lshiftAmountToGetCrossCycleStrength);
 
 startRenderingACycle:
 		int32_t numSamplesThisCycle = numSamplesLeftToDo;
