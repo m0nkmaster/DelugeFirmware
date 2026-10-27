@@ -68,6 +68,7 @@ enum RuntimeFeatureSettingType : uint32_t {
 	ShowBatteryLevel,
 	RoundedCorners,
 	ShortcutOverlay,
+	UsbHostAudio,
 	MaxElement // Keep as boundary
 };
 

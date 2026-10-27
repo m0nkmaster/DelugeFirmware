@@ -17,9 +17,8 @@
 
 #include "settings.h"
 #include "devSysexSetting.h"
+#include "drivers/usb/usb_mode.h"
 #include "emulated_display.h"
-#include "gui/menu_item/usb/audio.h"
-#include "gui/menu_item/usb/host_status.h"
 #include "hid/display/display.h"
 #include "hid/display/oled_canvas/canvas.h"
 #include "setting.h"
@@ -76,13 +75,21 @@ SettingToggle menuTrimFromStartOfAudioClip(RuntimeFeatureSettingType::TrimFromSt
 SettingToggle menuShowBatteryLevel(RuntimeFeatureSettingType::ShowBatteryLevel);
 RoundedCornersSettingToggle menuRoundedCorners(RuntimeFeatureSettingType::RoundedCorners);
 SettingToggle menuShortcutOverlay(RuntimeFeatureSettingType::ShortcutOverlay);
-// A session-only hardware role switch, so it is not serialized with the feature preferences.
-usb::HostMode menuUsbHostMode{l10n::String::STRING_FOR_USB_HOST_MODE, l10n::String::STRING_FOR_USB_HOST_MODE};
-usb::HostStatus menuUsbHostStatus{l10n::String::STRING_FOR_USB_HOST_AUDIO_STATUS};
+class UsbHostAudioSetting final : public SettingToggle {
+public:
+	UsbHostAudioSetting() : SettingToggle(RuntimeFeatureSettingType::UsbHostAudio) {}
+	void writeCurrentValue() override {
+		SettingToggle::writeCurrentValue();
+		deluge::usb::setHostAudioEnabled(runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::UsbHostAudio));
+		if (deluge::usb::hostMode()) {
+			display->displayPopup(l10n::get(l10n::String::STRING_FOR_USB_MODE_SWITCHING));
+		}
+	}
+};
+UsbHostAudioSetting menuUsbHostAudio;
 
-std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings + 2> subMenuEntries{
-    &menuUsbHostMode,
-    &menuUsbHostStatus,
+std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings> subMenuEntries{
+    &menuUsbHostAudio,
     &menuDrumRandomizer,
     &menuFineTempo,
     &menuQuantize,

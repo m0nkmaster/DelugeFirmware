@@ -37,17 +37,19 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
 
 ### USB roles, settings, and power
 
-- `SETTINGS > USB AUDIO > ENABLED` controls the peripheral interface presented to a computer at startup.
-- `INPUT` controls direct monitoring. `OUTPUT > MAIN MIX / LINE IN` chooses what a computer receives; it does not
+- `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` controls the peripheral interface presented to a computer at startup.
+- `DIRECT MONITORING` (`MONI`) controls direct monitoring. `SEND TO COMPUTER > MAIN MIX / LINE IN` chooses what a computer receives; it does not
   select the TONEX capture source.
-- `SETTINGS > COMMUNITY FEATURES > USB HOST (DC POWER)` changes the session's USB **role**, not just an audio enable
-  flag. The next boot uses normal startup role detection; it is not a persisted preference.
-- The checkbox reports the requested/current host role, not successful audio streaming.
+- `SETTINGS > USB > MODE` selects `COMPUTER` (`COMP`) or `HOST`, affecting MIDI and audio. The next boot uses
+  normal startup role detection; the role is not persisted. `USB > STATUS` (`STAT`) reports the mode or host-audio state.
+- `COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) is the separate persisted capability, XML key `usbHostAudio`.
+  It defaults on to preserve existing branch behavior. Off skips audio driver registration, leaving MIDI hosting available.
+  A change queues host reinitialization without changing the requested role; computer connections are left alone.
 - Role changes interrupt the current USB audio/MIDI connection but do not restart the song or the Deluge.
 - On a computer connection, disconnect the computer before asking the Deluge to become host. The guard uses VBUS
   **and peripheral enumeration state** as evidence of an external host; voltage alone cannot identify its source.
 - The Deluge's `hw_usb_set_vbout` and `hw_usb_clear_vbout` are no-ops. This firmware cannot switch the physical USB
-  power rail, reliably detect the DC jack, or increase the current it supplies. `(DC POWER)` is a user reminder.
+  power rail, reliably detect the DC jack, or increase the current it supplies. The DC-power popup when selecting Host is a user reminder.
 - A live source needs `USB INPUT` on an audio clip and `SAMPLER` or `LOOPER` monitoring. `PLAYER` does not monitor.
 - Direct synth/kit sampling does not yet have a source selector. `AudioRecorder::opened()` in
   `src/deluge/gui/ui/audio_recorder.cpp` hard-codes the analogue input (stereo when a mic/line plug is detected,
@@ -199,13 +201,13 @@ Hardware test procedure (packet reception reported below; complete recording/pla
 
 1. Use the built `build/Release/deluge.bin`; record its SHA-256 and the branch commit. Follow the SD precautions below.
 2. Power the Deluge from DC and connect one TONEX directly with the host adapter and a known data cable.
-3. Open Community Features → USB Host Audio Status. It should progress to “Receiving USB audio” (previous builds:
+3. Enable Community Features → USB Host Audio, select USB → Mode → Host, then open USB → Status. It should progress to “Receiving USB audio” (previous builds:
    “Audio packets received”). Developer builds also display a packet count, nominally around 8000 packets/s for a
    nonempty packet each microframe; ordinary Release builds omit that diagnostic.
 4. Select USB INPUT on an audio clip, use SAMPLER/LOOPER, and play an audible signal. Record and play back a clip.
 5. Repeat for both TONEX models. Record the exact status/count if either fails. A rising count alone is not proof of
    audible or correctly scaled audio.
-6. Unplug/replug, switch host off/on, and change to a computer connection. Check that the song stays running and the
+6. Unplug/replug, switch USB Mode between Computer/Host, toggle the community host-audio capability, and change to a computer connection. Check that the song stays running and the
    previous device cannot publish stale packets after teardown.
 7. Check ordinary full-speed MIDI, a high-speed MIDI device if available, and hubs. Then test audio under CPU load.
    Treat dropouts, stalls, or an IRQ timing problem as unresolved until investigated on hardware.
@@ -336,3 +338,28 @@ The previously tested release and its checksum manifest were preserved before re
 `build/usb-diagnostics/releases/e2d67a61c/{deluge.bin,build.json}`. Do not overwrite that reference build.
 The cleanup release's revision, checksum and validation results will be recorded separately in
 `build/usb-diagnostics/cleanup-build.json`; it has not yet been tested on the physical Deluge.
+
+
+### Separate host-audio capability and USB mode (2026-10-27)
+
+The user reports occasional flaky connections after successful operation with both TONEX models. The cause is not
+established. This menu/capability change does not claim to resolve reconnection reliability.
+
+- Settings now contains `USB` → `Mode`, `Status`, `USB audio`. Audio controls are `Computer audio`, `Direct monitoring`,
+  and `Send to computer`. The existing peripheral-audio setting and audio-clip `USB INPUT` source retain their behavior.
+- 7SEG uses `USB`, `MODE`, `STAT`, `USBA`; role values `COMP`/`HOST`; audio controls `COMP`, `MONI`, `SEND`;
+  community capability `HAUD` with the standard on/off indicator. Long status messages scroll; popups use four-character
+  codes (`WAIT`, `BUSY`, `DISC`, `FAIL`) or `DC` for the power reminder. The mode screen
+  refreshes after asynchronous refusals so the display returns to the actual role.
+- Host audio remains off internally until SD community preferences have loaded. USB is initialized earlier in boot;
+  applying an enabled preference queues host reopening to register the audio class. Applying a disabled preference
+  leaves MIDI-only hosting in place. Computer-mode USB is not reopened by the preference. Factory reset reapplies it.
+- Role changes and capability changes share the USB-lock-protected queue; the latest requested role is preserved.
+  Turning host audio off removes its class registration so composite devices can fall through to MIDI. It does not
+  undo high-speed negotiation or other shared USB changes.
+- Hardware checks still needed: both display types, preference persistence/reboot, each TONEX, computer audio/MIDI,
+  a combined audio/MIDI peripheral with host audio off, hubs, and repeated unplug/replug/role transitions.
+- Validation: all 9 CTest targets passed, including 45 USB tests. Four added regressions cover disabled audio-class
+  registration, an uninterrupted computer connection, deferred host reopening, and preserving a queued Computer role.
+  Debug and Release builds passed; all new 7SEG navigation/option/popup translations were checked for four-character
+  length. These are software checks, not physical display or reconnection tests. No SD-card write was performed.
