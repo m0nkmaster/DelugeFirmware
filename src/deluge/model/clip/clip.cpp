@@ -423,6 +423,10 @@ bool Clip::opportunityToBeginSessionLinearRecording(ModelStackWithTimelineCounte
 					auto* cons = new (consMemory) ConsequenceClipBeginLinearRecord(this);
 					action->addConsequence(cons);
 				}
+				else {
+					// Empty RECORD action is useless and would crash on abort cleanup if left dangling
+					actionLogger.deleteLastActionIfEmpty();
+				}
 			}
 		}
 
