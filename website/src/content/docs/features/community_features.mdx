@@ -1214,15 +1214,16 @@ For a detailed description of this feature, please refer to the feature document
 
 ### 4.5.11 - Audition From Waveform View
 
-- <Badge text="c1.3" variant="tip" /> When editing a sample's markers in the waveform view, auditioning the sound (via its :key[Audition Pad] or
-  incoming MIDI) now starts playback from the left edge of the visible waveform if you have scrolled or zoomed past the
-  `START` (GREEN) marker. This lets you check an `END` or `LOOP` point without waiting for the whole sample to play
-  through.
-  - If the sample is reversed, playback starts from the right edge of the visible waveform instead, if the `END` (RED)
-    marker is off screen to the right.
-  - Only the first pass is affected. If the sample loops, each repeat starts from the loop start (or start marker) as usual.
-  - Notes played by the sequencer are unaffected, as are samples in `STRETCH` mode while synced to a note's length.
-  - This feature is `ON` by default and can be set to `ON` or `OFF` via `SETTINGS > COMMUNITY FEATURES > AUDITION FROM WAVEFORM VIEW`.
+- <Badge text="c1.3" variant="tip" /> When editing a sample's markers in the
+  waveform view, auditioning the sound (via its :key[Audition Pad] or incoming
+  MIDI) now starts playback from the left edge of the visible waveform if you
+  have scrolled or zoomed past the `START` (GREEN) marker. This lets you check
+  an `END` or `LOOP` point without waiting for the whole sample to play through.
+- If the sample is reversed, playback starts from the right edge of the visible waveform instead, if the `END` (RED)
+  marker is off screen to the right.
+- Only the first pass is affected. If the sample loops, each repeat starts from the loop start (or start marker) as usual.
+- Notes played by the sequencer are unaffected, as are samples in `STRETCH` mode while synced to a note's length.
+- This feature is `ON` by default and can be set to `ON` or `OFF` via `SETTINGS > COMMUNITY FEATURES > AUDITION FROM WAVEFORM VIEW`.
 
 ## 4.6 - Instrument Clip View - Kit Clip Features
 
@@ -1317,14 +1318,16 @@ See this demo for more details:
 
 ### 4.9.3 - Play From Waveform View
 
-- <Badge text="c1.3" variant="tip" /> When editing an audio clip's markers in the waveform view (e.g. :key[Shift + Waveform Pad]), pressing
-  :key[Play] now starts playback from the left edge of the visible waveform if you have scrolled or zoomed past the
-  `START` (GREEN) marker, so you can check the `END` point without waiting for the whole clip to play through.
-  - If the clip is reversed, playback starts from the right edge of the visible waveform instead.
-  - Other clips play from the matching position, just as with :key[Horizontal + Play].
-  - :key[Horizontal + Play] starts playback from the beginning instead, and while playing it restarts from the visible waveform.
-  - This is controlled by the same `SETTINGS > COMMUNITY FEATURES > AUDITION FROM WAVEFORM VIEW` setting as
-    [Audition From Waveform View](#4511---audition-from-waveform-view).
+- <Badge text="c1.3" variant="tip" /> When editing an audio clip's markers in
+  the waveform view (e.g. :key[Shift + Waveform Pad]), pressing :key[Play] now
+  starts playback from the left edge of the visible waveform if you have
+  scrolled or zoomed past the `START` (GREEN) marker, so you can check the `END`
+  point without waiting for the whole clip to play through.
+- If the clip is reversed, playback starts from the right edge of the visible waveform instead.
+- Other clips play from the matching position, just as with :key[Horizontal + Play].
+- :key[Horizontal + Play] starts playback from the beginning instead, and while playing it restarts from the visible waveform.
+- This is controlled by the same `SETTINGS > COMMUNITY FEATURES > AUDITION FROM WAVEFORM VIEW` setting as
+  [Audition From Waveform View](#4511---audition-from-waveform-view).
 
 ## 4.10 - Third Party Device Integration
 

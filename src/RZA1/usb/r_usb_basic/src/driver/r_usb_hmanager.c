@@ -643,6 +643,11 @@ static uint16_t usb_hstd_chk_device_class(usb_utr_t* ptr, usb_hcdreg_t* driver, 
     /* Search within configuration total-length */
     while (total_length1 < total_length2)
     {
+        if (total_length2 - total_length1 < 2 || descriptor_table[total_length1] < 2
+            || descriptor_table[total_length1] > total_length2 - total_length1)
+        {
+            return USB_ERROR;
+        }
         switch (descriptor_table[total_length1 + 1])
         {
             /* Configuration Descriptor ? */
@@ -655,14 +660,16 @@ static uint16_t usb_hstd_chk_device_class(usb_utr_t* ptr, usb_hcdreg_t* driver, 
                 /* Interface Descriptor ? */
             case USB_DT_INTERFACE:
 
-                if ((uint16_t)descriptor_table[total_length1 + 5] == driver->ifclass)
+                if (descriptor_table[total_length1] < 9)
                 {
-
-                    // If audio class, ensure MIDI subclass. Rohan
-                    if (descriptor_table[total_length1 + 5] == USB_IFCLS_AUD
-                        && descriptor_table[total_length1 + 6] != 0x03)
-                        break;
-
+                    return USB_ERROR;
+                }
+                if ((uint16_t)descriptor_table[total_length1 + 5] == driver->ifclass
+                    && (driver->ifsubclass == USB_IFSUBCLS_ANY
+                        || descriptor_table[total_length1 + 6] == driver->ifsubclass)
+                    && (driver->ifprotocol == USB_IFPROTO_ANY
+                        || descriptor_table[total_length1 + 7] == driver->ifprotocol))
+                {
                     result   = USB_ERROR;
                     table[0] = (uint16_t*)&g_usb_hstd_device_descriptor[ptr->ip];
                     table[2] = (uint16_t*)&descriptor_table[total_length1];
@@ -689,10 +696,6 @@ static uint16_t usb_hstd_chk_device_class(usb_utr_t* ptr, usb_hcdreg_t* driver, 
                 break;
         }
         total_length1 += descriptor_table[total_length1];
-        if (0 == descriptor_table[total_length1])
-        {
-            break;
-        }
     }
     return USB_ERROR;
 } /* End of function usb_hstd_chk_device_class() */

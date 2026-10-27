@@ -69,6 +69,7 @@ enum RuntimeFeatureSettingType : uint32_t {
 	RoundedCorners,
 	ShortcutOverlay,
 	AuditionFromWaveformView,
+	UsbHostAudio,
 	MaxElement // Keep as boundary
 };
 
