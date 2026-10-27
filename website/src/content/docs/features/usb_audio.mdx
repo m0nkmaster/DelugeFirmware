@@ -141,21 +141,21 @@ control the hardware's USB power output.
 
 The checkbox reports the USB role, not whether an audio device is streaming. Open
 `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO STATUS` (`USTA` on 7SEG) to check capture startup. It distinguishes
-unsupported formats, clock/interface setup errors, waiting for packets, and stopped transfers. On OLED, the packet
-counter updates live; on 7SEG, reopen the page to refresh the count. Receiving packets does not necessarily mean
-they contain an audible signal. To hear USB input through an audio clip, use `SAMPLER` or `LOOPER` monitoring.
+unsupported formats, clock/interface setup errors, waiting for audio, and stopped transfers. `Receiving USB audio`
+means audio data is arriving, though it may contain silence. To hear USB input through an audio clip, use `SAMPLER`
+or `LOOPER` monitoring.
 
 Support is currently limited to one full- or high-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. The host
 negotiates the device's bus speed. High-speed capture uses interrupt-driven reception for 125-microsecond packets;
 full-speed capture uses 1-millisecond packets. Only `bInterval=1` and one transaction per interval are supported.
-UAC2 requires a
-terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
+UAC2 requires a terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
 is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
 sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
 
 <Aside type="caution">
-  Captured descriptors from TONEX ONE and TONEX Plug are covered by regression tests, but streaming on the Deluge
-  and power delivery have not been verified as working on hardware. USB power depends on the
+  USB audio operation with TONEX ONE and TONEX Plug has been reported working by the user who tested this branch.
+  Both devices' captured descriptors are also covered by regression tests. Other devices and operating conditions
+  still need testing. USB power depends on the
   Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
   USB audio compatibility.
 </Aside>

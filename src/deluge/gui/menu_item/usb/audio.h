@@ -38,7 +38,7 @@ public:
 	}
 };
 
-/// Switches the physical port into host mode immediately. This is intentionally session-only because the Deluge
+/// Queues a host/device role change for the USB task. This is intentionally session-only because the Deluge
 /// cannot reliably distinguish external DC power from battery power in software.
 class HostMode final : public Toggle {
 public:
