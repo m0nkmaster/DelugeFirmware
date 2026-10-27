@@ -20,6 +20,7 @@
 #include "RZA1/sdhi/inc/sdif.h"
 #include "definitions_cxx.hpp"
 #include "drivers/pic/pic.h"
+#include "drivers/usb/usb_mode.h"
 #include "gui/ui/audio_recorder.h"
 #include "gui/ui/browser/browser.h"
 #include "gui/ui/keyboard/keyboard_screen.h"
@@ -837,6 +838,9 @@ extern "C" int32_t deluge_main(void) {
 
 	// Hopefully we can read these files now
 	runtimeFeatureSettings.readSettingsFromFile();
+	// USB starts before SD preferences are available. Keep experimental audio unregistered until now;
+	// enabling it queues a host reconnection, leaving an existing computer connection alone.
+	deluge::usb::setHostAudioEnabled(runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::UsbHostAudio));
 	deluge::hid::display::oled_canvas::Canvas::roundedCornersEnabled =
 	    runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::RoundedCorners);
 	MIDIDeviceManager::readDevicesFromFile();

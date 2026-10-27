@@ -23,14 +23,27 @@ namespace deluge::usb {
 namespace {
 int pendingMode = -1;
 ModeChangeCallback pendingCallback = nullptr;
+bool audioEnabled = false;
+bool pendingHostRestart = false;
 } // namespace
 
 bool hostMode() {
 	return usbCurrentlyInitialized && g_usb_usbmode == USB_HOST;
 }
 
-ModeChangeResult setHostMode(bool enabled) {
-	if (usbCurrentlyInitialized && enabled == hostMode()) {
+bool hostAudioEnabled() {
+	return audioEnabled;
+}
+
+void setHostAudioEnabled(bool enabled) {
+	if (audioEnabled != enabled) {
+		audioEnabled = enabled;
+		pendingHostRestart = true;
+	}
+}
+
+static ModeChangeResult changeMode(bool enabled, bool restartHost) {
+	if (usbCurrentlyInitialized && enabled == hostMode() && !(enabled && restartHost)) {
 		return ModeChangeResult::Success;
 	}
 	if (usbLock) {
@@ -66,6 +79,10 @@ ModeChangeResult setHostMode(bool enabled) {
 	return usbCurrentlyInitialized && hostMode() == enabled ? ModeChangeResult::Success : ModeChangeResult::StartFailed;
 }
 
+ModeChangeResult setHostMode(bool enabled) {
+	return changeMode(enabled, false);
+}
+
 void requestHostMode(bool enabled, ModeChangeCallback callback) {
 	pendingMode = enabled;
 	pendingCallback = callback;
@@ -76,14 +93,16 @@ bool requestedHostMode() {
 }
 
 void processPendingModeChange() {
-	if (pendingMode < 0 || usbLock) {
+	if ((pendingMode < 0 && !pendingHostRestart) || usbLock) {
 		return;
 	}
-	bool enabled = pendingMode != 0;
+	bool enabled = pendingMode >= 0 ? pendingMode != 0 : hostMode();
+	bool restartHost = pendingHostRestart;
 	auto callback = pendingCallback;
 	pendingMode = -1;
 	pendingCallback = nullptr;
-	auto result = setHostMode(enabled);
+	pendingHostRestart = false;
+	auto result = changeMode(enabled, restartHost);
 	// Opening USB can yield to the UI. Preserve a newer request made during that wait.
 	if (callback && pendingMode < 0) {
 		callback(result);

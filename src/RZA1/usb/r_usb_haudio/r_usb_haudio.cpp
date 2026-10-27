@@ -21,6 +21,7 @@ extern uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP];
 #include "definitions.h"
 #include "deluge/drivers/usb/hosted_audio.h"
 #include "deluge/drivers/usb/usb_audio.h"
+#include "deluge/drivers/usb/usb_mode.h"
 
 #include <algorithm>
 #include <array>
@@ -430,6 +431,10 @@ void detached(usb_utr_t*, uint16_t devaddr, uint16_t)
 extern "C" void usb_hstd_audio_register(usb_utr_t* ptr)
 {
     usb_hstd_audio_stop();
+    if (!deluge::usb::hostAudioEnabled())
+    {
+        return; // Leave composite devices available to the existing MIDI driver.
+    }
     usb_hcdreg_t driver{};
     driver.ifclass    = USB_IFCLS_AUD;
     driver.ifsubclass = 0x01; // AudioControl; the parser then selects an AudioStreaming interface.

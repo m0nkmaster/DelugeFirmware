@@ -12,6 +12,12 @@ namespace deluge::usb {
 /// be enabled while the Deluge has external DC power and is not connected to another USB host.
 bool hostMode();
 
+/// Experimental capture capability, independent of the controller role. Starts disabled until preferences load.
+bool hostAudioEnabled();
+/// Apply the preference and queue a host reconnection so audio/MIDI class ownership is reconsidered.
+/// Does not change the requested role or interrupt a computer connection.
+void setHostAudioEnabled(bool enabled);
+
 enum class ModeChangeResult { Success, Busy, HostConnected, StartFailed };
 /// Switch USB roles immediately, only from a context where the USB stack is not in use.
 /// VBUS alone does not identify a computer; reject when peripheral enumeration is also detected.

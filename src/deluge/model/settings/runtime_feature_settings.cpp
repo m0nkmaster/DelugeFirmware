@@ -16,6 +16,7 @@
  */
 
 #include "runtime_feature_settings.h"
+#include "drivers/usb/usb_mode.h"
 #include "gui/l10n/l10n.h"
 #include "hid/display/display.h"
 #include "model/song/song.h"
@@ -217,6 +218,10 @@ void RuntimeFeatureSettings::init() {
 	    {l10n::getView(STRING_FOR_SHORTCUT_OVERLAY_MENU_AND_CLIP),
 	     static_cast<uint32_t>(RuntimeFeatureStateShortcutOverlay::MenuAndClip)},
 	};
+
+	// Preserve host audio for existing users of this experimental branch when the XML key is absent.
+	SetupOnOffSetting(settings[RuntimeFeatureSettingType::UsbHostAudio], STRING_FOR_USB_HOST_AUDIO, "usbHostAudio",
+	                  RuntimeFeatureStateToggle::On);
 }
 
 void RuntimeFeatureSettings::factoryReset(bool showPopup) {
@@ -230,6 +235,7 @@ void RuntimeFeatureSettings::factoryReset(bool showPopup) {
 	startupSong.clear();
 	init();
 	readSettingsFromFile();
+	deluge::usb::setHostAudioEnabled(isOn(RuntimeFeatureSettingType::UsbHostAudio));
 }
 
 void RuntimeFeatureSettings::readSettingsFromFile() {
