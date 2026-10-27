@@ -19,6 +19,7 @@
 #include "drivers/usb/usb_mode.h"
 #include "gui/menu_item/selection.h"
 #include "gui/menu_item/toggle.h"
+#include "gui/ui_timer_manager.h"
 #include "hid/display/display.h"
 #include "storage/flash_storage.h"
 
@@ -40,10 +41,35 @@ public:
 
 /// Queues a host/device role change for the USB task. This is intentionally session-only because the Deluge
 /// cannot reliably distinguish external DC power from battery power in software.
-class HostMode final : public Toggle {
+class HostMode final : public Selection {
 public:
-	using Toggle::Toggle;
+	using Selection::Selection;
+	void beginSession(MenuItem* previous) override {
+		Selection::beginSession(previous);
+		uiTimerManager.setTimer(TimerName::UI_SPECIFIC, 100);
+	}
+	ActionResult timerCallback() override {
+		if (getValue() != deluge::usb::requestedHostMode()) {
+			drawValue();
+		}
+		uiTimerManager.setTimer(TimerName::UI_SPECIFIC, 100);
+		return ActionResult::DEALT_WITH;
+	}
+	deluge::vector<std::string_view> getOptions(OptType optType) override {
+		(void)optType;
+		using enum l10n::String;
+		return {l10n::getView(STRING_FOR_USB_COMPUTER), l10n::getView(STRING_FOR_USB_HOST)};
+	}
 	void readCurrentValue() override { this->setValue(deluge::usb::requestedHostMode()); }
+	// Reflect rejected/completed asynchronous requests on both displays, including after a popup expires.
+	void drawValue() override {
+		readCurrentValue();
+		Selection::drawValue();
+	}
+	void drawPixelsForOled() override {
+		readCurrentValue();
+		Selection::drawPixelsForOled();
+	}
 	void writeCurrentValue() override {
 		bool enabled = this->getValue();
 		deluge::usb::requestHostMode(enabled, [](deluge::usb::ModeChangeResult result) {
@@ -52,7 +78,7 @@ public:
 			auto message = STRING_FOR_USB_MODE_UNAVAILABLE;
 			switch (result) {
 			case Success:
-				message = deluge::usb::hostMode() ? STRING_FOR_DC_POWER_REQUIRED : STRING_FOR_USB_DEVICE_MODE;
+				message = deluge::usb::hostMode() ? STRING_FOR_DC_POWER_REQUIRED : STRING_FOR_USB_COMPUTER;
 				break;
 			case HostConnected:
 				message = STRING_FOR_USB_HOST_CONNECTED;

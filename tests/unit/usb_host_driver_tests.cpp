@@ -197,6 +197,7 @@ peripheralState = USB_DS_POWR;
 openFails = false;
 requestDeviceDuringOpen = false;
 roleCallbacks = 0;
+deluge::usb::setHostAudioEnabled(true);
 deluge::usb::requestHostMode(false, nullptr);
 deluge::usb::processPendingModeChange();
 capturedSamples.clear();
@@ -242,6 +243,66 @@ TEST(UsbHostDriver, SynchronousRejectionDoesNotPostAnEnumerationReply) {
 	CHECK_EQUAL(USB_ERROR, checkDevice(descriptor));
 	CHECK_EQUAL(0, enumerationReplies);
 	CHECK(pendingControl == nullptr);
+}
+
+TEST(UsbHostDriver, DisabledHostAudioDoesNotRegisterAClassOrClaimCompositeDevices) {
+	deluge::usb::setHostAudioEnabled(false);
+	deluge::usb::processPendingModeChange();
+	registeredDriver = {};
+	usb_hstd_audio_register(&context);
+	CHECK(registeredDriver.classcheck == nullptr);
+	CHECK_EQUAL(0, pipeRegistrations);
+	CHECK(pendingControl == nullptr);
+	deluge::usb::setHostAudioEnabled(true);
+	deluge::usb::processPendingModeChange();
+	usb_hstd_audio_register(&context);
+	CHECK(registeredDriver.classcheck != nullptr);
+	CHECK_EQUAL(USB_OK, checkDevice(uac1));
+}
+
+TEST(UsbHostDriver, HostAudioPreferenceDoesNotInterruptComputerConnection) {
+	externalVbus = true;
+	peripheralState = USB_DS_CNFG;
+	deluge::usb::setHostAudioEnabled(false);
+	deluge::usb::processPendingModeChange();
+	deluge::usb::setHostAudioEnabled(true);
+	deluge::usb::processPendingModeChange();
+	CHECK(roleChanges.empty());
+	CHECK_FALSE(deluge::usb::hostMode());
+}
+
+TEST(UsbHostDriver, HostAudioPreferenceReconnectsHostAfterUsbLockIsReleased) {
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	roleChanges.clear();
+	usbLock = 1;
+	deluge::usb::setHostAudioEnabled(false);
+	deluge::usb::processPendingModeChange();
+	CHECK(roleChanges.empty());
+	CHECK(deluge::usb::requestedHostMode());
+	usbLock = 0;
+	deluge::usb::processPendingModeChange();
+	CHECK_EQUAL(2, roleChanges.size());
+	CHECK_EQUAL(3, roleChanges[0]); // Close host before reopening with the new class set.
+	CHECK_EQUAL(2, roleChanges[1]);
+	CHECK(deluge::usb::hostMode());
+	CHECK_FALSE(deluge::usb::hostAudioEnabled());
+	roleChanges.clear();
+	deluge::usb::setHostAudioEnabled(false); // An unchanged preference does not reconnect again.
+	deluge::usb::processPendingModeChange();
+	CHECK(roleChanges.empty());
+}
+
+TEST(UsbHostDriver, HostAudioPreferencePreservesPendingComputerRoleRequest) {
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	roleChanges.clear();
+	deluge::usb::requestHostMode(false, roleChanged);
+	deluge::usb::setHostAudioEnabled(false);
+	deluge::usb::processPendingModeChange();
+	CHECK_FALSE(deluge::usb::hostMode());
+	CHECK_EQUAL(2, roleChanges.size());
+	CHECK_EQUAL(3, roleChanges[0]);
+	CHECK_EQUAL(4, roleChanges[1]); // Open peripheral, never reopen host.
+	CHECK_EQUAL(1, roleCallbacks);
 }
 
 TEST(UsbHostDriver, MultirateUac1SetsAndReadsEndpointClockAfterSelectingInterface) {

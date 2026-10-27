@@ -44,6 +44,9 @@ private:
 		if (!deluge::usb::hostMode()) {
 			return l10n::get(STRING_FOR_USB_DEVICE_MODE);
 		}
+		if (!deluge::usb::hostAudioEnabled()) {
+			return l10n::get(STRING_FOR_USB_HOST_AUDIO_OFF);
+		}
 		auto text = STRING_FOR_USB_NO_AUDIO_DEVICE;
 		switch (usb_hstd_audio_status()) {
 		case USB_HOST_AUDIO_IDLE:
@@ -81,7 +84,9 @@ private:
 	void refresh() {
 		auto status = usb_hstd_audio_status();
 		bool host = deluge::usb::hostMode();
-		bool changed = firstRefresh || status != previousStatus || host != previousHost;
+		bool audioEnabled = deluge::usb::hostAudioEnabled();
+		bool changed =
+		    firstRefresh || status != previousStatus || host != previousHost || audioEnabled != previousAudioEnabled;
 		if (display->haveOLED()) {
 #if ENABLE_TEXT_OUTPUT
 			// Developer builds also display a live packet counter.
@@ -104,11 +109,13 @@ private:
 		}
 		previousStatus = status;
 		previousHost = host;
+		previousAudioEnabled = audioEnabled;
 		firstRefresh = false;
 		uiTimerManager.setTimer(TimerName::UI_SPECIFIC, 500);
 	}
 	usb_host_audio_status_t previousStatus = USB_HOST_AUDIO_IDLE;
 	bool previousHost = false;
+	bool previousAudioEnabled = false;
 	bool firstRefresh = true;
 };
 } // namespace deluge::gui::menu_item::usb
