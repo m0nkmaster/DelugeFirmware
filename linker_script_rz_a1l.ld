@@ -87,7 +87,6 @@ IRQ_STACK_SIZE	      = 0x2000;     /* IRQ mode stack                     */
 FIQ_STACK_SIZE	      = 0x2000;     /* FRQ mode stack                     */
 SVC_STACK_SIZE	      = 0x2000;     /* SVC mode stack                     */
 ABT_STACK_SIZE	      = 0x2000;     /* ABT mode stack                     */
-UND_STACK_SIZE	      = 0x2000;     /* UND mode stack                     */
 TTB_SIZE              = 0x8000;     /* Level-1 Translation Table for MMU  */
 
 INTERNAL_RAM_START = 0x20020000;
@@ -135,10 +134,6 @@ SECTIONS
 		.  += ABT_STACK_SIZE;
 		.	= ALIGN(0x4);
 		abt_stack_end = .;
-		und_stack_start = .;
-		.  += UND_STACK_SIZE;
-		.	= ALIGN(0x4);
-		und_stack_end = .;
 	} >RAM012L
 	
 	.bss (NOLOAD) :
