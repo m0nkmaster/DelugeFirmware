@@ -151,8 +151,11 @@ bool NewClipType::acceptCurrentOption() {
 ActionResult NewClipType::padAction(int32_t x, int32_t y, int32_t on) {
 	ActionResult result = sessionView.padAction(x, y, on); // let the grid handle this
 
-	display->setNextTransitionDirection(-1);
-	close();
+	// Only close once creation mode has been exited (accept via pad release / cancel)
+	if (currentUIMode != UI_MODE_CREATING_CLIP) {
+		display->setNextTransitionDirection(-1);
+		close();
+	}
 
 	return result;
 }
@@ -160,17 +163,22 @@ ActionResult NewClipType::padAction(int32_t x, int32_t y, int32_t on) {
 ActionResult NewClipType::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
 	using namespace deluge::hid::button;
 
+	ActionResult result;
 	if (b == SELECT_ENC) {
 		acceptCurrentOption();
+		result = ActionResult::DEALT_WITH;
 	}
 	else {
-		sessionView.clipCreationButtonPressed(b, on, inCardRoutine); // let the grid handle this
+		result = sessionView.clipCreationButtonPressed(b, on, inCardRoutine); // let the grid handle this
 	}
 
-	display->setNextTransitionDirection(-1);
-	close();
+	// Close only when accepted or cancellation exited creation mode — never leave yield() stuck
+	if (currentUIMode != UI_MODE_CREATING_CLIP) {
+		display->setNextTransitionDirection(-1);
+		close();
+	}
 
-	return ActionResult::DEALT_WITH;
+	return result;
 }
 
 LED NewClipType::getLedFromOption(int32_t option) {
