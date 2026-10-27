@@ -779,8 +779,7 @@ int32_t MIDIInstrument::getFirstUnusedCC(ModelStackWithThreeMainThings* modelSta
                                          int32_t stopAt) {
 
 	if (direction == 0) {
-		ModelStackWithAutoParam* modelStackWithAutoParam =
-		    getParamToControlFromInputMIDIChannel(startAt, modelStack);
+		ModelStackWithAutoParam* modelStackWithAutoParam = getParamToControlFromInputMIDIChannel(startAt, modelStack);
 		if (!modelStackWithAutoParam->autoParam || !modelStackWithAutoParam->autoParam->isAutomated()) {
 			return startAt;
 		}
