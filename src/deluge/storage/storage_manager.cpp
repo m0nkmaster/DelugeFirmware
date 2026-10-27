@@ -789,8 +789,7 @@ bool StorageManager::buildPathToFile(const char* fileName) {
 
 FileReader::FileReader() {
 	fileClusterBufferAllocation = GeneralMemoryAllocator::get().allocLowSpeed(32768 + CACHE_LINE_SIZE * 2);
-	fileClusterBuffer =
-	    fileClusterBufferAllocation ? (char*)fileClusterBufferAllocation + CACHE_LINE_SIZE : nullptr;
+	fileClusterBuffer = fileClusterBufferAllocation ? (char*)fileClusterBufferAllocation + CACHE_LINE_SIZE : nullptr;
 }
 
 // Used to read an in-memory file stream.
@@ -943,8 +942,7 @@ FRESULT FileReader::closeWriter() {
 FileWriter::FileWriter() {
 	bufferSize = 32768;
 	writeClusterBufferAllocation = GeneralMemoryAllocator::get().allocLowSpeed(bufferSize + CACHE_LINE_SIZE * 2);
-	writeClusterBuffer =
-	    writeClusterBufferAllocation ? (char*)writeClusterBufferAllocation + CACHE_LINE_SIZE : nullptr;
+	writeClusterBuffer = writeClusterBufferAllocation ? (char*)writeClusterBufferAllocation + CACHE_LINE_SIZE : nullptr;
 }
 
 FileWriter::FileWriter(bool inMem) : FileWriter() {
