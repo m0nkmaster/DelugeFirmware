@@ -2,7 +2,8 @@
  * Copyright © 2026 Synthstrom Audible Limited
  *
  * Host-side USB Audio capture for the Deluge. The Renesas stack calls the class callbacks from its cooperative USB
- * task. Audio packets are converted there and handed to the lock-free input ring consumed by the audio engine.
+ * task. Full-speed packets are converted there; high-speed packets are drained in the USB ISR. Both feed the
+ * lock-free input ring consumed by the audio engine.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -20,7 +21,6 @@ extern uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP];
 #include "definitions.h"
 #include "deluge/drivers/usb/hosted_audio.h"
 #include "deluge/drivers/usb/usb_audio.h"
-#include "deluge/io/debug/log.h"
 
 #include <algorithm>
 #include <array>
@@ -157,7 +157,6 @@ void queuePacket()
         streaming   = false;
         audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
         deluge::usb_audio::stopHostedInput();
-        D_PRINTLN("USB host audio: failed to queue capture packet");
     }
 }
 
@@ -204,7 +203,6 @@ void sampleRateReadComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     if (transfer->status != USB_CTRL_END || transfer->tranlen != 0 || actualRate != selectedStream->sampleRate)
     {
         audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
-        D_PRINTLN("USB host audio: device rejected 44.1kHz clock");
         return;
     }
     if (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2)
@@ -226,7 +224,6 @@ void sampleRateComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     if (transfer->status != USB_CTRL_END)
     {
         audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
-        D_PRINTLN("USB host audio: sample-rate request failed");
         return;
     }
     readSampleRate(transfer);
@@ -253,7 +250,6 @@ void readSampleRate(usb_utr_t* ptr)
     controlTransfer.ipp       = ptr->ipp;
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
-        D_PRINTLN("USB host audio: couldn't read sample rate");
         audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
@@ -287,7 +283,6 @@ void setSampleRate(usb_utr_t* ptr)
     controlTransfer.ipp       = ptr->ipp;
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
-        D_PRINTLN("USB host audio: couldn't set sample rate");
         audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
@@ -330,7 +325,6 @@ void selectStreamingInterface(usb_utr_t* ptr)
     controlTransfer.ipp       = ptr->ipp;
     if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
     {
-        D_PRINTLN("USB host audio: couldn't select streaming interface");
         audioStatus = USB_HOST_AUDIO_INTERFACE_ERROR;
     }
 }
