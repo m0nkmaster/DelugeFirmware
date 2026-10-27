@@ -554,8 +554,8 @@ tryAgain:
 		    || !util::checked_add(minBytesNeeded, extraSpaceLeft, minBytesNeeded)
 		    || !util::checked_add(newNum, numExtraSpacesToAllocate, idealNum)
 		    || !util::checked_mul(static_cast<uint32_t>(idealNum), elementSize, idealBytesNeeded)
-		    || !util::checked_add(idealBytesNeeded, extraSpaceLeft, idealBytesNeeded)
-		    || minBytesNeeded <= allocatedSize || idealBytesNeeded < minBytesNeeded) {
+		    || !util::checked_add(idealBytesNeeded, extraSpaceLeft, idealBytesNeeded) || minBytesNeeded <= allocatedSize
+		    || idealBytesNeeded < minBytesNeeded) {
 			goto getBrandNewMemory;
 		}
 		GeneralMemoryAllocator::get().extend(memoryAllocationStart, minBytesNeeded - allocatedSize,
