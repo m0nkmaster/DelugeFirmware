@@ -44,11 +44,11 @@ The Deluge's USB MIDI ports keep working as before.
 
 USB settings are in `SETTINGS > USB` (`USB` on 7SEG):
 
-| Setting | 7SEG | Purpose |
-| --- | --- | --- |
-| `MODE` | `MODE` | `COMPUTER` (`COMP`) connects to a computer; `HOST` (`HOST`) manages attached USB devices. |
-| `STATUS` | `STAT` | Shows computer mode, or host-audio progress/errors. Longer messages scroll on 7SEG. |
-| `USB AUDIO` | `USBA` | Opens the audio controls below. |
+| Setting     | 7SEG   | Purpose                                                                                   |
+| ----------- | ------ | ----------------------------------------------------------------------------------------- |
+| `MODE`      | `MODE` | `COMPUTER` (`COMP`) connects to a computer; `HOST` (`HOST`) manages attached USB devices. |
+| `STATUS`    | `STAT` | Shows computer mode, or host-audio progress/errors. Longer messages scroll on 7SEG.       |
+| `USB AUDIO` | `USBA` | Opens the audio controls below.                                                           |
 
 The mode applies to both USB MIDI and audio. Changing it reconnects USB without restarting the Deluge or song;
 USB audio/MIDI is interrupted. Connect DC power before selecting Host, and disconnect any computer first. A DC-power
@@ -60,11 +60,11 @@ messages scroll in `STATUS`.
 
 Inside `SETTINGS > USB > USB AUDIO`:
 
-| Setting | 7SEG | Options |
-| --- | --- | --- |
-| `COMPUTER AUDIO` | `COMP` | On (default), off: whether the Deluge offers audio to a computer. |
-| `DIRECT MONITORING` | `MONI` | On (default), off: hear incoming USB audio directly through the outputs. |
-| `SEND TO COMPUTER` | `SEND` | `MAIN MIX` (default, `MIX`) or `LINE IN` (`LINE`). Does not send audio to a hosted device. |
+| Setting             | 7SEG   | Options                                                                                    |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------ |
+| `COMPUTER AUDIO`    | `COMP` | On (default), off: whether the Deluge offers audio to a computer.                          |
+| `DIRECT MONITORING` | `MONI` | On (default), off: hear incoming USB audio directly through the outputs.                   |
+| `SEND TO COMPUTER`  | `SEND` | `MAIN MIX` (default, `MIX`) or `LINE IN` (`LINE`). Does not send audio to a hosted device. |
 
 `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) enables experimental capture from hosted audio devices.
 It is saved with the community preferences and defaults to on to preserve this branch's existing behavior. Turning it
@@ -127,10 +127,10 @@ Monitoring follows the audio output mode, as for any other source (see
 
 <Aside type="caution">
   If an audio clip is monitoring the USB input, the computer's audio becomes
-  part of the Deluge's output, which is sent back to the computer when `SEND TO COMPUTER`
-  is `MAIN MIX`. If your DAW is also playing its Deluge input back out to the
-  Deluge, that makes a feedback loop. Turn off input monitoring in the DAW, or
-  use the `PLAYER` mode on the clip.
+  part of the Deluge's output, which is sent back to the computer when `SEND TO
+  COMPUTER` is `MAIN MIX`. If your DAW is also playing its Deluge input back out
+  to the Deluge, that makes a feedback loop. Turn off input monitoring in the
+  DAW, or use the `PLAYER` mode on the clip.
 </Aside>
 
 Recording a sample from a synth or kit's sample menu still uses the analogue line/mic input automatically; it does
@@ -177,11 +177,12 @@ is duplicated to stereo; for larger streams, the first two channels are used. Se
 sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
 
 <Aside type="caution">
-  USB audio operation with TONEX ONE and TONEX Plug has been reported working by the user who tested this branch.
-  Both devices' captured descriptors are also covered by regression tests. Other devices and operating conditions
-  still need testing. USB power depends on the
-  Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
-  USB audio compatibility.
+  USB audio operation with TONEX ONE and TONEX Plug has been reported working by
+  the user who tested this branch. Both devices' captured descriptors are also
+  covered by regression tests. Other devices and operating conditions still need
+  testing. USB power depends on the Deluge's hardware and external supply;
+  firmware cannot increase the available current. This is not yet universal USB
+  audio compatibility.
 </Aside>
 
 Development history, device captures, and the hardware test procedure are recorded in
