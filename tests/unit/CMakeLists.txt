@@ -72,6 +72,11 @@ file(GLOB_RECURSE deluge_SOURCES
         # For MIDI message / queue tests
         ../../src/deluge/model/midi/message.cpp
         ../../src/deluge/io/midi/midi_queue.cpp
+        # For hosted USB Audio descriptor and sample conversion tests
+        ../../src/deluge/drivers/usb/hosted_audio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio_transport.c
+        ../../src/deluge/drivers/usb/usb_mode.cpp
 )
 
 add_executable(UnitTests
@@ -96,6 +101,8 @@ add_executable(UnitTests
         iterance_migration_tests.cpp
         waveform_peak_math_tests.cpp
         midi_queue_tests.cpp
+        hosted_audio_tests.cpp
+        usb_host_driver_tests.cpp
 )
 add_test(NAME UnitTests
         COMMAND UnitTests)

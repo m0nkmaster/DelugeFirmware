@@ -413,7 +413,9 @@ void usb_hhub_registration(usb_utr_t* ptr, usb_hcdreg_t* callback)
         driver.p_pipetbl = callback->p_pipetbl; /* Pipe Define Table address */
     }
 
-    driver.ifclass    = (uint16_t)USB_IFCLS_HUB;   /* Interface Class */
+    driver.ifclass    = (uint16_t)USB_IFCLS_HUB; /* Interface Class */
+    driver.ifsubclass = USB_IFSUBCLS_ANY;
+    driver.ifprotocol = USB_IFPROTO_ANY;
     driver.classinit  = &usb_hhub_initial;         /* Driver init */
     driver.classcheck = &usb_hhub_check_class;     /* Driver check */
     driver.devconfig  = (usb_cb_t)&usb_hhub_open;  /* Device configured */
@@ -2906,6 +2908,7 @@ static void usb_hhub_port_detach(usb_utr_t* ptr, uint16_t hubaddr, uint16_t port
 
 } /* End of function usb_hhub_port_detach() */
 
+#include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 #include "RZA1/usb/userdef/r_usb_hmidi_config.h"
 
 /***********************************************************************************************************************
@@ -2924,6 +2927,7 @@ static void usb_hhub_selective_detach(usb_utr_t* ptr, uint16_t devaddr)
     /* Check Connection */
     if (USB_NOCONNECT != usb_hstd_get_dev_speed(ptr, addr))
     {
+        usb_hstd_audio_detach_device(devaddr);
         for (i = USB_MIN_PIPE_NO; i <= USB_MAX_PIPE_NO; i++)
         {
             /* Not control transfer */

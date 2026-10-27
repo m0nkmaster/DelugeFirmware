@@ -42,17 +42,39 @@ The Deluge's USB MIDI ports keep working as before.
 
 ## Settings
 
-USB audio's settings are in `SETTINGS > USB AUDIO` (`USBA` on 7SEG):
+USB settings are in `SETTINGS > USB` (`USB` on 7SEG):
 
-| Setting   | 7SEG  | Options                                                     |
-| --------- | ----- | ----------------------------------------------------------- |
-| `ENABLED` | `ON`  | On (default), off                                           |
-| `INPUT`   | `IN`  | On (default), off - see below                               |
-| `OUTPUT`  | `OUT` | `MAIN MIX` (default, `MIX`), `LINE IN` (`LINE`) - see below |
+| Setting | 7SEG | Purpose |
+| --- | --- | --- |
+| `MODE` | `MODE` | `COMPUTER` (`COMP`) connects to a computer; `HOST` (`HOST`) manages attached USB devices. |
+| `STATUS` | `STAT` | Shows computer mode, or host-audio progress/errors. Longer messages scroll on 7SEG. |
+| `USB AUDIO` | `USBA` | Opens the audio controls below. |
+
+The mode applies to both USB MIDI and audio. Changing it reconnects USB without restarting the Deluge or song;
+USB audio/MIDI is interrupted. Connect DC power before selecting Host, and disconnect any computer first. A DC-power
+reminder appears when Host is selected. The mode is session-only; the next boot uses normal connection detection.
+
+On 7SEG, mode-change popups use `WAIT` while switching, `DC` as the host-power reminder, `DISC` if a computer must
+be disconnected first, `BUSY` if USB cannot switch yet, and `FAIL` if the controller cannot start. Detailed host-audio
+messages scroll in `STATUS`.
+
+Inside `SETTINGS > USB > USB AUDIO`:
+
+| Setting | 7SEG | Options |
+| --- | --- | --- |
+| `COMPUTER AUDIO` | `COMP` | On (default), off: whether the Deluge offers audio to a computer. |
+| `DIRECT MONITORING` | `MONI` | On (default), off: hear incoming USB audio directly through the outputs. |
+| `SEND TO COMPUTER` | `SEND` | `MAIN MIX` (default, `MIX`) or `LINE IN` (`LINE`). Does not send audio to a hosted device. |
+
+`SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) enables experimental capture from hosted audio devices.
+It is saved with the community preferences and defaults to on to preserve this branch's existing behavior. Turning it
+off leaves USB MIDI hosting available, including the MIDI function of combined audio/MIDI devices. Changing it while
+hosting reconnects the USB devices; changing it in computer mode does not interrupt the computer connection or switch
+roles. This preference does not restore the old USB stack or remove the shared high-speed/MIDI changes.
 
 ## Turning USB audio off
 
-USB audio is on by default. To turn it off, set `SETTINGS > USB AUDIO > ENABLED` to off. The Deluge then connects to
+USB audio is on by default. To turn it off, set `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` to off. The Deluge then connects to
 your computer as a USB MIDI device only, exactly as it did before USB audio was added.
 
 The setting takes effect the next time the Deluge is turned on, since your computer only finds out what kind of
@@ -68,7 +90,7 @@ device the Deluge is when it first connects.
 ## Playing audio from your computer
 
 Audio from the computer is mixed straight into the Deluge's main outputs and headphones, after the song's master
-volume and effects. This is on by default, and can be turned off with `SETTINGS > USB AUDIO > INPUT`. When it's off,
+volume and effects. This is on by default, and can be turned off with `SETTINGS > USB > USB AUDIO > DIRECT MONITORING`. When it's off,
 you'll only hear the computer's audio through an audio clip that's monitoring it, or while sampling it.
 
 This audio is **not** sent back to the computer as part of the Deluge's output, so you won't get an echo. To put the
@@ -81,7 +103,7 @@ when a sampler clip has finished recording.
 
 ## Recording the Deluge into your computer
 
-`SETTINGS > USB AUDIO > OUTPUT` sets what the computer receives:
+`SETTINGS > USB > USB AUDIO > SEND TO COMPUTER` sets what the computer receives:
 
 - **`MAIN MIX`** (the default) is the Deluge's final stereo output: the same audio that goes to the main outputs,
   including any monitored inputs, but not the computer's own audio when it's mixed straight to the outputs.
@@ -105,16 +127,62 @@ Monitoring follows the audio output mode, as for any other source (see
 
 <Aside type="caution">
   If an audio clip is monitoring the USB input, the computer's audio becomes
-  part of the Deluge's output, which is sent back to the computer when `OUTPUT`
+  part of the Deluge's output, which is sent back to the computer when `SEND TO COMPUTER`
   is `MAIN MIX`. If your DAW is also playing its Deluge input back out to the
   Deluge, that makes a feedback loop. Turn off input monitoring in the DAW, or
   use the `PLAYER` mode on the clip.
 </Aside>
 
-Recording a sample from a synth or kit's sample menu still uses the line input only.
+Recording a sample from a synth or kit's sample menu still uses the analogue line/mic input automatically; it does
+not yet offer a USB source selector. To use a USB recording in a kit, record it into an audio clip first, **save the
+song**, then load the recorded sample from `SAMPLES/CLIPS` into a kit row through the sample browser. Before saving,
+audio-clip recordings live in `SAMPLES/CLIPS/TEMP`, which the Deluge's browser deliberately prevents you from entering.
 
 ## Latency
 
 Audio from the computer is buffered by about 6 ms (256 samples) on the Deluge before it's played or recorded, which
 keeps it smooth when the Deluge is busy. Audio going to the computer is buffered by about 2 ms. Your computer adds its
 own buffering on top of both, which you can usually set in your DAW.
+
+## Experimental USB host input
+
+This build also includes experimental capture from a class-compliant USB audio device connected directly to the
+Deluge. This is separate from using the Deluge as your computer's audio interface.
+
+1. Power the Deluge from its DC supply and disconnect any computer from its USB port.
+2. Connect the audio device using the Deluge's USB host adapter and a USB data cable.
+3. Enable `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD` on 7SEG).
+4. Select `SETTINGS > USB > MODE > HOST` (`USB > MODE > HOST` on 7SEG).
+5. Choose `USB INPUT` as the audio clip's source and use `SAMPLER` or `LOOPER` to monitor it.
+
+The mode selection takes effect without restarting the Deluge, once the current USB operation finishes. It reconnects
+the USB session, interrupting any USB MIDI or audio in progress. It is a session-only selection: the next boot uses the
+normal USB role detection. The mode selector refuses host mode when peripheral enumeration by another host is detected.
+USB voltage alone cannot identify where power comes from, and the firmware cannot reliably detect whether the DC
+supply is connected. Connect DC and disconnect any computer before enabling host mode. The role switch does not
+control the hardware's USB power output.
+
+The mode reports the USB role, not whether an audio device is streaming. Open
+`SETTINGS > USB > STATUS` (`USB > STAT` on 7SEG) to check capture startup. With the community capability disabled,
+in Host mode this shows “Host mode: audio disabled” (`HOST AUDIO OFF` on 7SEG). Otherwise it distinguishes
+unsupported formats, clock/interface setup errors, waiting for audio, and stopped transfers. `Receiving USB audio`
+means audio data is arriving, though it may contain silence. To hear USB input through an audio clip, use `SAMPLER`
+or `LOOPER` monitoring.
+
+Support is currently limited to one full- or high-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. The host
+negotiates the device's bus speed. High-speed capture uses interrupt-driven reception for 125-microsecond packets;
+full-speed capture uses 1-millisecond packets. Only `bInterval=1` and one transaction per interval are supported.
+UAC2 requires a terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
+is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
+sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
+
+<Aside type="caution">
+  USB audio operation with TONEX ONE and TONEX Plug has been reported working by the user who tested this branch.
+  Both devices' captured descriptors are also covered by regression tests. Other devices and operating conditions
+  still need testing. USB power depends on the
+  Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
+  USB audio compatibility.
+</Aside>
+
+Development history, device captures, and the hardware test procedure are recorded in
+[`docs/dev/usb-audio-handover.md`](https://github.com/m0nkmaster/DelugeFirmware/blob/feat/usb-audio-host/docs/dev/usb-audio-handover.md).

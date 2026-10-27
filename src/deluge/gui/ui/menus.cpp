@@ -225,6 +225,7 @@
 #include "gui/menu_item/unpatched_param.h"
 #include "gui/menu_item/unpatched_param/pan.h"
 #include "gui/menu_item/usb/audio.h"
+#include "gui/menu_item/usb/host_status.h"
 #include "gui/menu_item/voice/polyphony.h"
 #include "gui/menu_item/voice/portamento.h"
 #include "gui/menu_item/voice/priority.h"
@@ -1045,9 +1046,12 @@ PLACE_SDRAM_BSS Submenu recordSubmenu{
 PLACE_SDRAM_BSS sample::browser_preview::Mode sampleBrowserPreviewModeMenu{STRING_FOR_SAMPLE_PREVIEW};
 
 PLACE_SDRAM_BSS flash::Status flashStatusMenu{STRING_FOR_PLAY_CURSOR};
-PLACE_SDRAM_BSS usb::Audio usbAudioEnabledMenu{STRING_FOR_ENABLED, STRING_FOR_USB_AUDIO};
-PLACE_SDRAM_BSS usb::DirectMonitoring usbAudioInputMenu{STRING_FOR_INPUT, STRING_FOR_USB_INPUT};
-PLACE_SDRAM_BSS usb::OutputSource usbAudioOutputMenu{STRING_FOR_OUTPUT, STRING_FOR_USB_OUTPUT};
+PLACE_SDRAM_BSS menu_item::usb::HostMode usbModeMenu{STRING_FOR_MODE, STRING_FOR_USB_MODE};
+PLACE_SDRAM_BSS menu_item::usb::HostStatus usbStatusMenu{STRING_FOR_USB_STATUS, STRING_FOR_USB_STATUS};
+PLACE_SDRAM_BSS menu_item::usb::Audio usbAudioEnabledMenu{STRING_FOR_USB_COMPUTER_AUDIO, STRING_FOR_USB_COMPUTER_AUDIO};
+PLACE_SDRAM_BSS menu_item::usb::DirectMonitoring usbAudioInputMenu{STRING_FOR_USB_MONITORING,
+                                                                   STRING_FOR_USB_MONITORING};
+PLACE_SDRAM_BSS menu_item::usb::OutputSource usbAudioOutputMenu{STRING_FOR_USB_TO_COMPUTER, STRING_FOR_USB_TO_COMPUTER};
 PLACE_SDRAM_BSS Submenu usbAudioMenu{
     STRING_FOR_USB_AUDIO,
     {
@@ -1058,6 +1062,14 @@ PLACE_SDRAM_BSS Submenu usbAudioMenu{
 };
 
 PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSION, STRING_FOR_FIRMWARE_VER_MENU_TITLE};
+PLACE_SDRAM_BSS Submenu usbMenu{
+    STRING_FOR_USB_SETTINGS,
+    {
+        &usbModeMenu,
+        &usbStatusMenu,
+        &usbAudioMenu,
+    },
+};
 
 PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
 PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -1913,7 +1925,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
         &gateSelectionMenu,
         &triggerClockMenu,
         &midiMenu,
-        &usbAudioMenu,
+        &usbMenu,
         &defaultsSubmenu,
         &padsSubmenu,
         &sampleBrowserPreviewModeMenu,
