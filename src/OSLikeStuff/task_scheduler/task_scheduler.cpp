@@ -238,6 +238,7 @@ void TaskManager::runTask(TaskID id) {
 	// so restore the caller's currentID on exit - otherwise yield() acts on the wrong task and a
 	// run-once task can be re-entered.
 	TaskID callerID = currentID;
+	bool callerCountThisTask = countThisTask;
 	countThisTask = true;
 	currentID = id;
 	auto* current_task = &list[currentID];
@@ -281,6 +282,7 @@ void TaskManager::runTask(TaskID id) {
 		lastFinishTime = timeNow;
 	}
 	currentID = callerID;
+	countThisTask = callerCountThisTask;
 }
 
 void TaskManager::runHighestPriTask() {
