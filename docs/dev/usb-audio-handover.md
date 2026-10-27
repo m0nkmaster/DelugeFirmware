@@ -1,13 +1,15 @@
 # USB audio and runtime USB roles: project handover
 
-Last updated: 2026-10-26. Keep this file current when changing this feature or recording a hardware result.
+Last updated: 2026-10-27. Keep this file current when changing this feature or recording a hardware result.
 
 ## Start here
 
 The user's goal is to capture audio from USB devices such as IK Multimedia TONEX ONE and TONEX Plug directly into
 Deluge audio clips, power the device from a DC-powered Deluge where the hardware permits, and change USB roles without
 rebooting. Broad class-compliant compatibility is the goal; the implementation is still experimental and has explicit
-limits. Do not describe it as universal, or claim that TONEX audio works on the Deluge until a hardware test confirms it.
+limits. The user has now reported working USB audio with **both TONEX ONE and TONEX Plug** (2026-10-27). This is a
+user hardware report for the high-speed build, not exhaustive compatibility, power or load testing. Do not describe
+the implementation as universal.
 
 Repository: `/Users/robmacdonald/Documents/projects/deluge/DelugeFirmware`.
 Branch: `feat/usb-audio-host`.
@@ -197,8 +199,9 @@ Hardware test procedure (packet reception reported below; complete recording/pla
 
 1. Use the built `build/Release/deluge.bin`; record its SHA-256 and the branch commit. Follow the SD precautions below.
 2. Power the Deluge from DC and connect one TONEX directly with the host adapter and a known data cable.
-3. Open Community Features → USB Host Audio Status. It should progress to “Audio packets received”, with a rapidly
-   increasing count (nominally around 8000 packets/s for a nonempty packet each microframe).
+3. Open Community Features → USB Host Audio Status. It should progress to “Receiving USB audio” (previous builds:
+   “Audio packets received”). Developer builds also display a packet count, nominally around 8000 packets/s for a
+   nonempty packet each microframe; ordinary Release builds omit that diagnostic.
 4. Select USB INPUT on an audio clip, use SAMPLER/LOOPER, and play an audible signal. Record and play back a clip.
 5. Repeat for both TONEX models. Record the exact status/count if either fails. A rising count alone is not proof of
    audible or correctly scaled audio.
@@ -312,3 +315,24 @@ A verified Mac backup of REC00096 is at
 An approval request to create a separate browsable copy at `SAMPLES/USB_RECORDINGS/REC00096.WAV` was interrupted by
 the user. Subsequent inspection confirmed that destination does not exist. No copy to that location is claimed and no
 temporary recordings were moved or deleted. The SD remains mounted for inspection; safely eject it before removal.
+
+### Both TONEX models confirmed working; cleanup (2026-10-27)
+
+The user now reports that the feature is working well with **both** TONEX models (ONE and Plug) and requests tidying
+and removal of some debugging. This supersedes the earlier uncertainty about which model was used. Audio-clip
+recording was also reported working in the preceding follow-up. This is user-reported hardware success, not a claim
+of a measured latency/power test or verification of every role-switch, hub and CPU-load scenario.
+
+Cleanup scope:
+
+- Keep the host status page and all its error states. Normal Release builds show “Receiving USB audio” / “Waiting
+  for USB audio”, without the raw packet counter. Debug/developer builds with `ENABLE_TEXT_OUTPUT` retain the counter.
+- Refresh the normal OLED status only when the state changes; retain the timer so connection changes still appear.
+- Remove six redundant host-driver debug log messages; their corresponding status/error reporting remains.
+- Correct stale comments about cooperative versus interrupt-driven capture and queued role switching.
+- Preserve the parser, clock sequence, FIFO configuration, audio transport, role guards and recording behavior.
+
+The previously tested release and its checksum manifest were preserved before rebuilding:
+`build/usb-diagnostics/releases/e2d67a61c/{deluge.bin,build.json}`. Do not overwrite that reference build.
+The cleanup release's revision, checksum and validation results will be recorded separately in
+`build/usb-diagnostics/cleanup-build.json`; it has not yet been tested on the physical Deluge.
