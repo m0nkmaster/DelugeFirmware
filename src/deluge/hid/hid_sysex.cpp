@@ -159,6 +159,12 @@ void HIDSysex::sendOLEDDataDelta(MIDICable& cable, bool force) {
 	const int32_t data_size = 768;
 	const int32_t max_packed_size = 922;
 
+	// No delta buffer (alloc failed) — send full frame instead of dereferencing null
+	if (oledDeltaImage == nullptr) {
+		sendOLEDData(cable, false);
+		return;
+	}
+
 	uint8_t* current = deluge::hid::display::OLED::oledCurrentImage[0];
 
 	int32_t first_change = 9000;
