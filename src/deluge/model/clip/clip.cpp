@@ -424,8 +424,11 @@ bool Clip::opportunityToBeginSessionLinearRecording(ModelStackWithTimelineCounte
 					action->addConsequence(cons);
 				}
 				else {
-					// Empty RECORD action is useless and would crash on abort cleanup if left dangling
-					actionLogger.deleteLastActionIfEmpty();
+					if (!action->firstConsequence) {
+						// Discard the empty RECORD action without retaining its freed pointer
+						actionLogger.deleteLastActionIfEmpty();
+						action = nullptr;
+					}
 				}
 			}
 		}
