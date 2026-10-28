@@ -244,7 +244,8 @@ Error String::concatenateAtPos(char const* newChars, int32_t pos, int32_t newCha
 	int32_t extraBytesNeeded;
 	bool deallocateAfter = true;
 
-	// If additional reasons, we definitely have to allocate afresh
+	// If additional reasons, we definitely have to allocate afresh. Only drop our reason on the shared memory once the
+	// new memory exists - if allocation fails we're still pointing at it.
 	if (oldNumReasons > 1) {
 		deallocateAfter = false;
 		goto allocateNewMemory;
@@ -289,7 +290,7 @@ allocateNewMemory:
 				delugeDealloc(stringMemory - 4);
 			}
 			else {
-				setNumReasons(oldNumReasons - 1);
+				setNumReasons(oldNumReasons - 1); // Reduce reasons on old memory
 			}
 			stringMemory = newStringMemory;
 			setNumReasons(1);
