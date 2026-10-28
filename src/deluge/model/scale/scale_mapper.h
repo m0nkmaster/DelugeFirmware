@@ -26,7 +26,7 @@ private:
 	/** Stores the transition notes from the last computed scale change.
 	 */
 	NoteSet lastTransitionNotes;
-	/** Indexes 0-11 store the transition scales for the corresponding scale size - 1.
+	/** Indexes 0-11 store the transition scales for scale sizes 1-12 (index = size - 1).
 	 *
 	 * Note: we include 12 tone scales both for simplicity, and in order to support 12-tone scales with
 	 * bent notes.
