@@ -23,6 +23,7 @@
 #include "io/debug/log.h"
 #include "memory/general_memory_allocator.h"
 #include "util/functions.h"
+#include "util/misc.h"
 #include <string.h>
 
 #if RESIZEABLE_ARRAY_DO_LOCKS
@@ -472,7 +473,16 @@ bool ResizeableArray::ensureEnoughSpaceAllocated(int32_t numAdditionalElementsNe
 			return false;
 		}
 
-		uint32_t allocatedMemorySize = numAdditionalElementsNeeded * elementSize;
+		if (numAdditionalElementsNeeded <= 0) {
+			LOCK_EXIT
+			return numAdditionalElementsNeeded == 0;
+		}
+
+		uint32_t allocatedMemorySize = 0;
+		if (!util::checked_mul(static_cast<uint32_t>(numAdditionalElementsNeeded), elementSize, allocatedMemorySize)) {
+			LOCK_EXIT
+			return false;
+		}
 
 		void* newMemory = GeneralMemoryAllocator::get().allocMaxSpeed(allocatedMemorySize);
 		if (!newMemory) {
@@ -488,7 +498,15 @@ bool ResizeableArray::ensureEnoughSpaceAllocated(int32_t numAdditionalElementsNe
 	int32_t elementsBeforeWrap = memorySize - memoryStart;
 	int32_t elementsAfterWrap = numElements - elementsBeforeWrap;
 
-	int32_t newNum = numElements + numAdditionalElementsNeeded;
+	if (numAdditionalElementsNeeded < 0) {
+		LOCK_EXIT
+		return false;
+	}
+	int32_t newNum = 0;
+	if (!util::checked_add(numElements, numAdditionalElementsNeeded, newNum)) {
+		LOCK_EXIT
+		return false;
+	}
 
 	void* __restrict__ oldMemory = memory;
 	void* __restrict__ oldMemoryAllocationStart = memoryAllocationStart;
@@ -526,9 +544,23 @@ tryAgain:
 		if (getRandom255() < 10)
 			goto getBrandNewMemory;
 #endif
-		GeneralMemoryAllocator::get().extend(memoryAllocationStart, (newNum)*elementSize - allocatedSize,
-		                                     (newNum + numExtraSpacesToAllocate) * elementSize - allocatedSize,
-		                                     &amountExtendedLeft, &amountExtendedRight);
+		// Sizes are measured from the allocation start, so include the sub-element slack left of memory. That keeps
+		// both strictly greater than allocatedSize whenever memorySize < newNum. memory/memoryStart/memorySize have
+		// already been rewritten above, so never return from here directly - getBrandNewMemory restores on failure.
+		uint32_t minBytesNeeded = 0;
+		uint32_t idealBytesNeeded = 0;
+		int32_t idealNum = 0;
+		if (!util::checked_mul(static_cast<uint32_t>(newNum), elementSize, minBytesNeeded)
+		    || !util::checked_add(minBytesNeeded, extraSpaceLeft, minBytesNeeded)
+		    || !util::checked_add(newNum, numExtraSpacesToAllocate, idealNum)
+		    || !util::checked_mul(static_cast<uint32_t>(idealNum), elementSize, idealBytesNeeded)
+		    || !util::checked_add(idealBytesNeeded, extraSpaceLeft, idealBytesNeeded) || minBytesNeeded <= allocatedSize
+		    || idealBytesNeeded < minBytesNeeded) {
+			goto getBrandNewMemory;
+		}
+		GeneralMemoryAllocator::get().extend(memoryAllocationStart, minBytesNeeded - allocatedSize,
+		                                     idealBytesNeeded - allocatedSize, &amountExtendedLeft,
+		                                     &amountExtendedRight);
 
 		// If successfully extended...
 		if (amountExtendedLeft || amountExtendedRight) {
@@ -549,10 +581,17 @@ getBrandNewMemory:
 		}
 #endif
 
-		uint32_t newMemoryAllocationSize = (newNum + numExtraSpacesToAllocate) * elementSize;
+		uint32_t newMemoryAllocationSize = 0;
+		int32_t allocNum = 0;
+		if (!util::checked_add(newNum, numExtraSpacesToAllocate, allocNum)
+		    || !util::checked_mul(static_cast<uint32_t>(allocNum), elementSize, newMemoryAllocationSize)) {
+			goto allocationFail;
+		}
 		newMemory = GeneralMemoryAllocator::get().allocMaxSpeed(newMemoryAllocationSize);
 		if (!newMemory) {
-			newMemoryAllocationSize = newNum * elementSize;
+			if (!util::checked_mul(static_cast<uint32_t>(newNum), elementSize, newMemoryAllocationSize)) {
+				goto allocationFail;
+			}
 			newMemory = GeneralMemoryAllocator::get().allocMaxSpeed(newMemoryAllocationSize);
 		}
 
