@@ -3499,11 +3499,16 @@ void InstrumentClipView::displayProbability(uint8_t probability, bool prevBase) 
 
 void InstrumentClipView::displayIterance(Iterance iterance) {
 	char buffer[(display->haveOLED()) ? 29 : 5];
-	iterance.format_display_value(
-	    buffer, sizeof(buffer),
-	    {.step_format = display->haveOLED() ? "%d of %d" : "%dof%d",
-	     .prefix = display->haveOLED() ? "Iterance: " : "",
-	     .label_type = display->haveOLED() ? Iterance::DisplayLabelType::LONG : Iterance::DisplayLabelType::SHORT});
+	if (!display->haveOLED() && iterance.toPresetIndex() == kCustomIterancePreset) {
+		strcpy(buffer, "CUST");
+	}
+	else {
+		iterance.format_display_value(
+		    buffer, sizeof(buffer),
+		    {.step_format = display->haveOLED() ? "%d of %d" : "%dof%d",
+		     .prefix = display->haveOLED() ? "Iterance: " : "",
+		     .label_type = display->haveOLED() ? Iterance::DisplayLabelType::LONG : Iterance::DisplayLabelType::SHORT});
+	}
 
 	if (display->haveOLED()) {
 		display->popupText(buffer, PopupType::ITERANCE);
@@ -3517,7 +3522,7 @@ void InstrumentClipView::displayFill(uint8_t mode) {
 	auto buffer_length = display->haveOLED() ? 29 : 5;
 	char buffer[buffer_length];
 
-	strncpy(buffer, getFillString(mode), buffer_length);
+	strncpy(buffer, !display->haveOLED() && mode == NOT_FILL ? "NFIL" : getFillString(mode), buffer_length);
 
 	if (display->haveOLED()) {
 		display->popupText(buffer, PopupType::FILL);
