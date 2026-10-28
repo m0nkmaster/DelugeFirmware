@@ -86,8 +86,8 @@ void HIDSysex::sendDisplayIfChanged() {
 	// we need to slow down a little. (USB buffer is larger and should be consumed much quicker)
 	const size_t bufferSpace = midiDisplayCable->sendBufferSpace();
 	// A full OLED frame is 888 bytes; DIN must retain one ring-buffer slot to distinguish full from empty.
-	const bool fullFrameWouldFillDINBuffer =
-	    midiDisplayCable == &MIDIDeviceManager::dinMIDIPorts && oledDeltaImage == nullptr && bufferSpace <= 888;
+	const bool fullFrameWouldFillDINBuffer = midiDisplayCable == &MIDIDeviceManager::dinMIDIPorts && display->haveOLED()
+	                                         && oledDeltaImage == nullptr && bufferSpace <= 888;
 	if (bufferSpace < 512 || fullFrameWouldFillDINBuffer) {
 		uiTimerManager.setTimer(TimerName::SYSEX_DISPLAY, 100);
 		return;
