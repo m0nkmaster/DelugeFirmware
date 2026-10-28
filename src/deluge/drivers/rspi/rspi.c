@@ -20,11 +20,17 @@
 #include "RZA1/system/iodefines/rspi_iodefine.h"
 #include "RZA1/system/rza_io_regrw.h"
 
+// Large enough for normal SPI ops; prevents infinite hang if the peripheral sticks.
+#define RSPI_WAIT_TIMEOUT 10000000U
+
 void R_RSPI_SendBasic8(uint8_t channel, uint8_t data) {
 
 	// If the TX buffer doesn't have 4 bytes of empty space in it, we'd better wait
+	uint32_t timeout = RSPI_WAIT_TIMEOUT;
 	while (0 == RZA_IO_RegRead_8((volatile uint8_t*)&(RSPI(channel).SPSR), RSPI_SPSR_SPTEF_SHIFT, RSPI_SPSR_SPTEF)) {
-		;
+		if (--timeout == 0) {
+			return;
+		}
 	}
 
 	// Clear the RX buffer - we get problems if it gets full
@@ -37,8 +43,11 @@ void R_RSPI_SendBasic8(uint8_t channel, uint8_t data) {
 void R_RSPI_SendBasic32(uint8_t channel, uint32_t data) {
 
 	// If the TX buffer doesn't have 4 bytes of empty space in it, we'd better wait
+	uint32_t timeout = RSPI_WAIT_TIMEOUT;
 	while (0 == RZA_IO_RegRead_8(&(RSPI(channel).SPSR.BYTE), RSPI_SPSR_SPTEF_SHIFT, RSPI_SPSR_SPTEF)) {
-		;
+		if (--timeout == 0) {
+			return;
+		}
 	}
 
 	// Clear the RX buffer - we get problems if it gets full
@@ -49,7 +58,12 @@ void R_RSPI_SendBasic32(uint8_t channel, uint32_t data) {
 }
 
 void R_RSPI_WaitEnd(uint8_t channel) {
-	while (!RSPI(channel).SPSR.BIT.TEND) {}
+	uint32_t timeout = RSPI_WAIT_TIMEOUT;
+	while (!RSPI(channel).SPSR.BIT.TEND) {
+		if (--timeout == 0) {
+			return;
+		}
+	}
 }
 
 int32_t R_RSPI_HasEnded(uint8_t channel) {
