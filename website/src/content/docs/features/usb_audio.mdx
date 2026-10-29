@@ -89,8 +89,8 @@ controller without rebooting. Changing the host-audio toggle does not select Hos
 ### What USB Host Audio enables
 
 `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) controls whether the Deluge can recognise and capture
-compatible audio devices **while in Host mode**. It is saved with the community preferences and defaults to on in
-this experimental branch.
+compatible audio devices **while in Host mode**. It is saved with the community preferences and defaults to off to preserve MIDI on combined audio/MIDI devices.
+Explicit saved preferences are retained; this default applies when the setting is absent or reset.
 
 | USB Host Audio | USB MIDI devices | Compatible USB audio devices |
 | --- | --- | --- |

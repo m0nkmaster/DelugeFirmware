@@ -14,12 +14,15 @@ uint8_t usbCurrentlyInitialized = 1;
 
 #include "drivers/usb/usb_mode.h"
 #include "fixtures/tonex_usb_descriptors.h"
+#include "io/midi/midi_engine.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <span>
 #include <type_traits>
 #include <vector>
+
+volatile uint16_t usbTestTimer = 0;
 
 namespace {
 usb_hcdreg_t registeredDriver{};
@@ -102,6 +105,7 @@ void usb_cstd_clr_transaction_counter(usb_utr_t*, uint16_t pipe) {
 	CHECK_EQUAL(USB_PIPE2, pipe);
 }
 uint8_t* usb_hstd_read_fifo(usb_utr_t* ptr, uint16_t count, uint16_t port, uint8_t* destination) {
+	usbTestTimer = static_cast<uint16_t>(usbTestTimer + 10);
 	CHECK_EQUAL(USB_D1USE, port);
 	CHECK(nextFifoPacket < fifoPackets.size());
 	const auto& packet = fifoPackets[nextFifoPacket++];
@@ -243,6 +247,53 @@ TEST(UsbHostDriver, SynchronousRejectionDoesNotPostAnEnumerationReply) {
 	CHECK_EQUAL(USB_ERROR, checkDevice(descriptor));
 	CHECK_EQUAL(0, enumerationReplies);
 	CHECK(pendingControl == nullptr);
+}
+
+TEST(UsbHostDriver, FullSpeedPacketCrossesDecodeChunksWithoutDroppingFrames) {
+	configure(uac1);
+	completeControl();
+	auto* transfer = pendingPacket;
+	pendingPacket = nullptr;
+	auto* bytes = static_cast<uint8_t*>(transfer->p_tranadr);
+	for (size_t frame = 0; frame < 44; ++frame) {
+		std::fill_n(bytes + frame * 6, 6, 0);
+		bytes[frame * 6 + 2] = frame;
+		bytes[frame * 6 + 5] = 0xc0;
+	}
+	transfer->tranlen -= 44 * 6;
+	transfer->status = USB_DATA_READING;
+	transfer->complete(transfer, 0, 0);
+	CHECK_EQUAL(88, capturedSamples.size());
+	for (size_t frame = 0; frame < 44; ++frame) {
+		CHECK_EQUAL(static_cast<int32_t>(frame << 24), capturedSamples[frame * 2]);
+		CHECK_EQUAL(static_cast<int32_t>(0xc0000000u), capturedSamples[frame * 2 + 1]);
+	}
+	CHECK_EQUAL(1, usb_hstd_audio_packet_count());
+	CHECK(pendingPacket != nullptr);
+}
+
+TEST(UsbHostDriver, HighSpeedMaximumMonoPacketPublishesEveryDecodeChunk) {
+	auto descriptor = uac1;
+	descriptor[38] = 1; // One channel, one byte per sample.
+	descriptor[39] = 1;
+	descriptor[40] = 8;
+	descriptor[49] = 0; // 1024-byte endpoint.
+	descriptor[50] = 4;
+	configure(descriptor, USB_HSCONNECT);
+	completeControl();
+	std::vector<uint8_t> packet(1024);
+	for (size_t i = 0; i < packet.size(); ++i) {
+		packet[i] = static_cast<uint8_t>(i);
+	}
+	queueFifoPackets({packet});
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(2048, capturedSamples.size());
+	for (size_t frame = 0; frame < packet.size(); ++frame) {
+		auto expected = static_cast<int32_t>(static_cast<uint32_t>(packet[frame]) << 24);
+		CHECK_EQUAL(expected, capturedSamples[frame * 2]);
+		CHECK_EQUAL(expected, capturedSamples[frame * 2 + 1]);
+	}
+	CHECK_EQUAL(1, usb_hstd_audio_packet_count());
 }
 
 TEST(UsbHostDriver, DisabledHostAudioDoesNotRegisterAClassOrClaimCompositeDevices) {
@@ -505,6 +556,23 @@ TEST(UsbHostDriver, ControllerStartFailureHasItsOwnResult) {
 	CHECK_EQUAL(0, usbLock);
 }
 
+TEST(UsbHostDriver, PollingRetriesFailedHostAndComputerStarts) {
+	MidiEngine engine;
+	for (bool host : {true, false}) {
+		openFails = true;
+		deluge::usb::requestHostMode(host, roleChanged);
+		engine.checkIncomingUsbMidi();
+		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::StartFailed);
+		CHECK_FALSE(usbCurrentlyInitialized);
+		openFails = false;
+		deluge::usb::requestHostMode(host, roleChanged);
+		engine.checkIncomingUsbMidi();
+		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::Success);
+		CHECK(usbCurrentlyInitialized);
+		CHECK_EQUAL(host, deluge::usb::hostMode());
+	}
+}
+
 TEST(UsbHostDriver, RequestDuringControllerOpenIsPreserved) {
 	requestDeviceDuringOpen = true;
 	deluge::usb::requestHostMode(true, roleChanged);
@@ -627,6 +695,22 @@ TEST(UsbHostDriver, HighSpeedIrqWorkIsBoundedAndIgnoresUnrelatedBits) {
 	CHECK_EQUAL(2, nextFifoPacket);
 	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
 	CHECK_EQUAL(3, usb_hstd_audio_packet_count());
+}
+
+TEST(UsbHostDriver, AudioIrqTimingKeepsMaximumHandlesTimerWrapAndResets) {
+	configure(usb_audio_fixtures::tonexOne, USB_HSCONNECT, 83);
+	completeControl();
+	completeControl();
+	completeControl();
+	usbTestTimer = 65530;
+	queueFifoPackets({std::vector<uint8_t>(48), std::vector<uint8_t>(48)});
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(20, usb_hstd_audio_max_irq_ticks());
+	queueFifoPackets({std::vector<uint8_t>(48)});
+	usb_hstd_audio_handle_brdy(&context, USB_BITSET(USB_PIPE2));
+	CHECK_EQUAL(20, usb_hstd_audio_max_irq_ticks());
+	usb_hstd_audio_stop();
+	CHECK_EQUAL(0, usb_hstd_audio_max_irq_ticks());
 }
 
 TEST(UsbHostDriver, IsochronousAudioRejectsLowSpeed) {

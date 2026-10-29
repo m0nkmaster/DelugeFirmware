@@ -29,13 +29,16 @@ extern uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP];
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#if ENABLE_TEXT_OUTPUT
+#include "RZA1/mtu/mtu.h"
+#endif
 
 namespace {
 
 constexpr uint16_t kAudioPipe         = USB_PIPE2;
 constexpr uint16_t kAudioBufferNumber = 48; // 48..79 for two 1024-byte planes; MIDI/hub use 0..47.
 constexpr size_t kMaxPacketBytes      = 1024;
-constexpr size_t kMaxDecodedSamples   = kMaxPacketBytes * 2;
+constexpr size_t kDecodeChunkFrames   = 32;
 
 const uint16_t targetPeripheralList[] = {
     USB_CFG_TPLCNT,
@@ -62,10 +65,13 @@ bool irqTransportOwned = false; // USB task only; ensures teardown runs even aft
 usb_utr_t audioContext{};
 std::atomic<usb_host_audio_status_t> audioStatus{USB_HOST_AUDIO_IDLE};
 std::atomic<uint32_t> receivedPackets{0};
+#if ENABLE_TEXT_OUTPUT
+std::atomic<uint32_t> maxIrqTicks{0};
+#endif
 static_assert(std::atomic<bool>::is_always_lock_free && std::atomic<uint32_t>::is_always_lock_free);
 
 alignas(4) std::array<uint8_t, kMaxPacketBytes + 1> packetBuffer;
-PLACE_SDRAM_BSS std::array<int32_t, kMaxDecodedSamples> decodedSamples;
+PLACE_SDRAM_BSS std::array<int32_t, kDecodeChunkFrames * 2> decodedSamples;
 usb_utr_t streamTransfer{};
 usb_utr_t controlTransfer{};
 uint16_t controlSetup[5]{};
@@ -106,6 +112,25 @@ const uint8_t* findEndpoint(
 void queuePacket();
 void selectStreamingInterface(usb_utr_t* ptr);
 
+void publishPacket(size_t received)
+{
+    size_t frameBytes = selectedStream->channels * selectedStream->subslotBytes;
+    if (received == 0 || received % frameBytes != 0)
+    {
+        return;
+    }
+    for (size_t offset = 0; offset < received;)
+    {
+        size_t bytes = std::min(received - offset, kDecodeChunkFrames * frameBytes);
+        size_t frames =
+            deluge::hosted_audio::decodePcm({packetBuffer.data() + offset, bytes}, *selectedStream, decodedSamples);
+        deluge::usb_audio::receiveHostedInput({decodedSamples.data(), frames * 2});
+        offset += bytes;
+    }
+    receivedPackets.fetch_add(1, std::memory_order_relaxed);
+    audioStatus = USB_HOST_AUDIO_RECEIVING;
+}
+
 void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 {
     if (!streaming || !selectedStream)
@@ -124,15 +149,7 @@ void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 
     uint32_t remaining = std::min<uint32_t>(transfer->tranlen, requestedBytes);
     uint32_t received  = requestedBytes - remaining;
-    size_t frameBytes  = selectedStream->channels * selectedStream->subslotBytes;
-    if (received != 0 && received % frameBytes == 0)
-    {
-        ++receivedPackets;
-        audioStatus   = USB_HOST_AUDIO_RECEIVING;
-        size_t frames = deluge::hosted_audio::decodePcm(
-            std::span<const uint8_t>{packetBuffer.data(), received}, *selectedStream, decodedSamples);
-        deluge::usb_audio::receiveHostedInput(std::span<const int32_t>{decodedSamples.data(), frames * 2});
-    }
+    publishPacket(received);
 
     queuePacket();
 }
@@ -461,6 +478,9 @@ extern "C" void usb_hstd_audio_stop(void)
     streaming       = false;
     audioStatus     = USB_HOST_AUDIO_IDLE;
     receivedPackets = 0;
+#if ENABLE_TEXT_OUTPUT
+    maxIrqTicks.store(0, std::memory_order_relaxed);
+#endif
     deluge::usb_audio::stopHostedInput();
     selectedStream.reset();
     deviceAddress = USB_NODEVICE;
@@ -481,6 +501,9 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
     {
         return 0;
     }
+#if ENABLE_TEXT_OUTPUT
+    uint16_t started = *TCNT[TIMER_SYSTEM_FAST];
+#endif
     // Drain at most both FIFO planes per interrupt. No allocation, task messages, PIPESEL or CFIFO access here.
     for (unsigned packet = 0; packet < 2; ++packet)
     {
@@ -497,18 +520,24 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
             deluge::usb_audio::stopHostedInput();
             break;
         }
-        size_t frameBytes = selectedStream->channels * selectedStream->subslotBytes;
-        if (received != 0 && received % frameBytes == 0)
-        {
-            size_t frames = deluge::hosted_audio::decodePcm(
-                {packetBuffer.data(), static_cast<size_t>(received)}, *selectedStream, decodedSamples);
-            deluge::usb_audio::receiveHostedInput({decodedSamples.data(), frames * 2});
-            receivedPackets.fetch_add(1, std::memory_order_relaxed);
-            audioStatus = USB_HOST_AUDIO_RECEIVING;
-        }
+        publishPacket(static_cast<size_t>(received));
     }
+#if ENABLE_TEXT_OUTPUT
+    uint16_t elapsed = static_cast<uint16_t>(*TCNT[TIMER_SYSTEM_FAST] - started);
+    if (elapsed > maxIrqTicks.load(std::memory_order_relaxed))
+    {
+        maxIrqTicks.store(elapsed, std::memory_order_relaxed);
+    }
+#endif
     return USB_BITSET(kAudioPipe);
 }
+
+#if ENABLE_TEXT_OUTPUT
+extern "C" uint32_t usb_hstd_audio_max_irq_ticks(void)
+{
+    return maxIrqTicks.load(std::memory_order_relaxed);
+}
+#endif
 
 extern "C" usb_host_audio_status_t usb_hstd_audio_status(void)
 {

@@ -34,6 +34,10 @@ typedef enum {
 
 usb_host_audio_status_t usb_hstd_audio_status(void);
 uint32_t usb_hstd_audio_packet_count(void);
+#if ENABLE_TEXT_OUTPUT
+// Maximum audio handler time in TIMER_SYSTEM_FAST ticks since stream teardown. No logging in the ISR.
+uint32_t usb_hstd_audio_max_irq_ticks(void);
+#endif
 
 #ifdef __cplusplus
 }
