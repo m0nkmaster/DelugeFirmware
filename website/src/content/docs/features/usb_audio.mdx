@@ -74,11 +74,13 @@ roles. This preference does not restore the old USB stack or remove the shared h
 
 ## Turning USB audio off
 
-USB audio is on by default. To turn it off, set `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` to off. The Deluge then connects to
+Computer audio is on by default. To turn it off, set `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` to off. The Deluge then connects to
 your computer as a USB MIDI device only, exactly as it did before USB audio was added.
 
-The setting takes effect the next time the Deluge is turned on, since your computer only finds out what kind of
-device the Deluge is when it first connects.
+The setting takes effect the next time computer mode starts, either after restarting the Deluge or switching USB
+mode away from `COMPUTER` and back. Disconnect the computer before switching to `HOST`, then reconnect it after
+returning to `COMPUTER`. Unplugging and reconnecting the cable alone does not rebuild the audio configuration.
+This setting does not disable experimental host capture; that has its own community preference.
 
 <Aside>
   If you've used the Deluge over USB MIDI before, your computer may treat it as
@@ -91,7 +93,7 @@ device the Deluge is when it first connects.
 
 Audio from the computer is mixed straight into the Deluge's main outputs and headphones, after the song's master
 volume and effects. This is on by default, and can be turned off with `SETTINGS > USB > USB AUDIO > DIRECT MONITORING`. When it's off,
-you'll only hear the computer's audio through an audio clip that's monitoring it, or while sampling it.
+you'll only hear the computer's audio through an audio clip that's monitoring it.
 
 This audio is **not** sent back to the computer as part of the Deluge's output, so you won't get an echo. To put the
 computer's audio through the Deluge's effects, monitor it with an audio clip instead (see below).
@@ -172,14 +174,21 @@ or `LOOPER` monitoring.
 Support is currently limited to one full- or high-speed USB Audio Class 1 or 2 capture device at 44.1 kHz. The host
 negotiates the device's bus speed. High-speed capture uses interrupt-driven reception for 125-microsecond packets;
 full-speed capture uses 1-millisecond packets. Only `bInterval=1` and one transaction per interval are supported.
-UAC2 requires a terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
-is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
-sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
+Capture accepts signed little-endian Type I PCM with 1–4 bytes per sample and up to 32 channels, with valid bits
+left-justified in each sample slot. Complete configuration descriptors must fit within 1024 bytes.
+The selected format must fit within one packet: at most 1023 bytes at full speed or 1024 bytes at high speed.
+UAC1 devices must advertise 44.1 kHz; devices with multiple or continuous rates must accept setting and reading back
+that rate. UAC2 requires a terminal connected directly to a readable clock source; writable clocks are set to
+44.1 kHz and read back, while read-only clocks must already report that rate. Clock selectors and multipliers are
+not supported. Mono is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back
+to the device, sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
 
 <Aside type="caution">
   USB audio operation with TONEX ONE and TONEX Plug has been reported working by the user who tested this branch.
   Both devices' captured descriptors are also covered by regression tests. Other devices and operating conditions
-  still need testing. USB power depends on the
+  still need testing, including sustained recording under CPU load, repeated role changes, and MIDI/hub compatibility
+  after high-speed negotiation. Occasional flaky connections have also been reported; their cause is unresolved.
+  USB power depends on the
   Deluge's hardware and external supply; firmware cannot increase the available current. This is not yet universal
   USB audio compatibility.
 </Aside>

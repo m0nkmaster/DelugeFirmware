@@ -1342,6 +1342,12 @@ the `COMMUNITY FEATURES` (OLED) or `FEAT` (7SEG) entry which allows you to turn 
 
 Note: these settings are saved to `SETTINGS/CommunityFeatures.XML` on your SD card.
 
+- `USB Host Audio (HAUD)` (experimental)
+  - Off by default. Enables audio capture from supported attached USB devices; see
+    [USB host input](/features/usb_audio#experimental-usb-host-input) for setup and limits.
+  - Changing it in host mode reconnects USB devices and interrupts USB MIDI/audio. In computer mode it leaves the
+    connection alone. Leave it off to use MIDI on combined audio/MIDI devices; simultaneous audio and MIDI on the
+    same attached device are not supported.
 - `Drum Randomizer (DRUM)` <Badge text="c1.0" variant="tip" />
   - When On, the Drum Randomizer shortcuts are enabled.
 - `Fine Tempo Knob (TEMP)` <Badge text="c1.0" variant="tip" />
