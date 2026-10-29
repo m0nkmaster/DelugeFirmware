@@ -541,7 +541,9 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
     while (ofdsc < length && ofdsc + table[ofdsc] <= length)
     {
         if (length - ofdsc < 2 || table[ofdsc] < 2 || table[ofdsc] > length - ofdsc)
+        {
             return USB_ERROR;
+        }
         /* Branch descriptor type */
         switch (table[ofdsc + 1])
         {
@@ -559,7 +561,9 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
             case USB_DT_ENDPOINT:
 
                 if (table[ofdsc] < 7)
+                {
                     return USB_ERROR;
+                }
 
                 pipetbl = R_USB_HmidiGetPipetbl(ptr, g_usb_hmidi_devaddr[ptr->ip]);
 
@@ -571,9 +575,11 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
 
                 // High-speed bulk packets can be 512 bytes. Interrupt pipes have fixed 64-byte FIFO storage;
                 // reject larger endpoints (including extra-transaction flags) before reserving any pipe.
-                uint16_t maxPacket = table[ofdsc + 4] | ((uint16_t)table[ofdsc + 5] << 8);
-                if (maxPacket == 0 || maxPacket > (endpointType == USB_EP_BULK && speed == USB_HSCONNECT ? 512 : 64))
+                uint16_t max_packet = table[ofdsc + 4] | ((uint16_t)table[ofdsc + 5] << 8);
+                if (max_packet == 0 || max_packet > (endpointType == USB_EP_BULK && speed == USB_HSCONNECT ? 512 : 64))
+                {
                     return USB_ERROR;
+                }
 
                 int endpointDirection = table[ofdsc + 2] & USB_EP_DIRMASK;
 

@@ -77,16 +77,16 @@ public:
 			using enum deluge::usb::ModeChangeResult;
 			auto message = STRING_FOR_USB_MODE_UNAVAILABLE;
 			switch (result) {
-			case Success:
+			case SUCCESS:
 				message = deluge::usb::hostMode() ? STRING_FOR_DC_POWER_REQUIRED : STRING_FOR_USB_COMPUTER;
 				break;
-			case HostConnected:
+			case HOST_CONNECTED:
 				message = STRING_FOR_USB_HOST_CONNECTED;
 				break;
-			case StartFailed:
+			case START_FAILED:
 				message = STRING_FOR_USB_START_FAILED;
 				break;
-			case Busy:
+			case BUSY:
 				break;
 			}
 			display->displayPopup(l10n::get(message));

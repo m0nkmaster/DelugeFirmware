@@ -40,7 +40,7 @@ uint16_t peripheralState = USB_DS_POWR;
 bool openFails = false;
 bool requestDeviceDuringOpen = false;
 unsigned roleCallbacks = 0;
-deluge::usb::ModeChangeResult lastRoleResult = deluge::usb::ModeChangeResult::Success;
+deluge::usb::ModeChangeResult lastRoleResult = deluge::usb::ModeChangeResult::SUCCESS;
 void roleChanged(deluge::usb::ModeChangeResult result) {
 	++roleCallbacks;
 	lastRoleResult = result;
@@ -323,7 +323,7 @@ TEST(UsbHostDriver, HostAudioPreferenceDoesNotInterruptComputerConnection) {
 }
 
 TEST(UsbHostDriver, HostAudioPreferenceReconnectsHostAfterUsbLockIsReleased) {
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::SUCCESS);
 	roleChanges.clear();
 	usbLock = 1;
 	deluge::usb::setHostAudioEnabled(false);
@@ -344,7 +344,7 @@ TEST(UsbHostDriver, HostAudioPreferenceReconnectsHostAfterUsbLockIsReleased) {
 }
 
 TEST(UsbHostDriver, HostAudioPreferencePreservesPendingComputerRoleRequest) {
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::SUCCESS);
 	roleChanges.clear();
 	deluge::usb::requestHostMode(false, roleChanged);
 	deluge::usb::setHostAudioEnabled(false);
@@ -484,9 +484,9 @@ TEST(UsbHostDriver, ClosingSessionCancelsAnOutstandingControlSequence) {
 }
 
 TEST(UsbHostDriver, RoleSwitchClosesOldRoleBeforeOpeningNewRole) {
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::SUCCESS);
 	CHECK(deluge::usb::hostMode());
-	CHECK(deluge::usb::setHostMode(false) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::setHostMode(false) == deluge::usb::ModeChangeResult::SUCCESS);
 	CHECK_FALSE(deluge::usb::hostMode());
 	CHECK_EQUAL(4, roleChanges.size());
 	for (size_t i = 0; i < roleChanges.size(); ++i) {
@@ -498,12 +498,12 @@ TEST(UsbHostDriver, RoleSwitchClosesOldRoleBeforeOpeningNewRole) {
 TEST(UsbHostDriver, EnumeratingHostAndBusyUsbPreventImmediateRoleSwitch) {
 	externalVbus = true;
 	peripheralState = USB_DS_DFLT;
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HostConnected);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HOST_CONNECTED);
 	CHECK(roleChanges.empty());
 	CHECK_EQUAL(0, usbLock);
 	externalVbus = false;
 	usbLock = 1;
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Busy);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::BUSY);
 	CHECK_EQUAL(1, usbLock);
 	CHECK(roleChanges.empty());
 }
@@ -511,14 +511,14 @@ TEST(UsbHostDriver, EnumeratingHostAndBusyUsbPreventImmediateRoleSwitch) {
 TEST(UsbHostDriver, UsbVoltageAloneDoesNotIdentifyAnExternalHost) {
 	externalVbus = true;
 	peripheralState = USB_DS_SPD_POWR;
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::Success);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::SUCCESS);
 	CHECK(deluge::usb::hostMode());
 }
 
 TEST(UsbHostDriver, SuspendedConfiguredComputerPreventsHostMode) {
 	externalVbus = true;
 	peripheralState = USB_DS_SPD_CNFG;
-	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HostConnected);
+	CHECK(deluge::usb::setHostMode(true) == deluge::usb::ModeChangeResult::HOST_CONNECTED);
 	CHECK(roleChanges.empty());
 }
 
@@ -533,7 +533,7 @@ TEST(UsbHostDriver, QueuedRoleChangeWaitsForUsbLockAndReportsResult) {
 	deluge::usb::processPendingModeChange();
 	CHECK(deluge::usb::hostMode());
 	CHECK_EQUAL(1, roleCallbacks);
-	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::Success);
+	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::SUCCESS);
 	deluge::usb::processPendingModeChange();
 	CHECK_EQUAL(1, roleCallbacks);
 }
@@ -551,7 +551,7 @@ TEST(UsbHostDriver, ControllerStartFailureHasItsOwnResult) {
 	openFails = true;
 	deluge::usb::requestHostMode(true, roleChanged);
 	deluge::usb::processPendingModeChange();
-	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::StartFailed);
+	CHECK(lastRoleResult == deluge::usb::ModeChangeResult::START_FAILED);
 	CHECK_FALSE(deluge::usb::hostMode());
 	CHECK_EQUAL(0, usbLock);
 }
@@ -562,12 +562,12 @@ TEST(UsbHostDriver, PollingRetriesFailedHostAndComputerStarts) {
 		openFails = true;
 		deluge::usb::requestHostMode(host, roleChanged);
 		engine.checkIncomingUsbMidi();
-		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::StartFailed);
+		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::START_FAILED);
 		CHECK_FALSE(usbCurrentlyInitialized);
 		openFails = false;
 		deluge::usb::requestHostMode(host, roleChanged);
 		engine.checkIncomingUsbMidi();
-		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::Success);
+		CHECK(lastRoleResult == deluge::usb::ModeChangeResult::SUCCESS);
 		CHECK(usbCurrentlyInitialized);
 		CHECK_EQUAL(host, deluge::usb::hostMode());
 	}
