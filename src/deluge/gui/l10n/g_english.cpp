@@ -163,7 +163,6 @@ PLACE_SDRAM_DATA Language english{
         {STRING_FOR_USB_INPUT, "USB input"},
         {STRING_FOR_USB_AUDIO, "USB audio"},
         {STRING_FOR_USB_SETTINGS, "USB"},
-        {STRING_FOR_USB_MODE, "USB mode"},
         {STRING_FOR_USB_COMPUTER, "Computer"},
         {STRING_FOR_USB_HOST, "Host"},
         {STRING_FOR_USB_STATUS, "Status"},

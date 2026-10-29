@@ -1046,7 +1046,7 @@ PLACE_SDRAM_BSS Submenu recordSubmenu{
 PLACE_SDRAM_BSS sample::browser_preview::Mode sampleBrowserPreviewModeMenu{STRING_FOR_SAMPLE_PREVIEW};
 
 PLACE_SDRAM_BSS flash::Status flashStatusMenu{STRING_FOR_PLAY_CURSOR};
-PLACE_SDRAM_BSS menu_item::usb::HostMode usbModeMenu{STRING_FOR_MODE, STRING_FOR_USB_MODE};
+PLACE_SDRAM_BSS menu_item::usb::HostMode usbModeMenu{STRING_FOR_MODE, STRING_FOR_MODE};
 PLACE_SDRAM_BSS menu_item::usb::HostStatus usbStatusMenu{STRING_FOR_USB_STATUS, STRING_FOR_USB_STATUS};
 PLACE_SDRAM_BSS menu_item::usb::Audio usbAudioEnabledMenu{STRING_FOR_USB_COMPUTER_AUDIO, STRING_FOR_USB_COMPUTER_AUDIO};
 PLACE_SDRAM_BSS menu_item::usb::DirectMonitoring usbAudioInputMenu{STRING_FOR_USB_MONITORING,

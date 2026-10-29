@@ -46,6 +46,7 @@ Do not assume unrelated local branches are included.
   select the TONEX capture source.
 - `SETTINGS > USB > MODE` selects `COMPUTER` (`COMP`) or `HOST`, affecting MIDI and audio. The next boot uses
   normal startup role detection; the role is not persisted. `USB > STATUS` (`STAT`) reports the mode or host-audio state.
+  7SEG uses short status codes documented in the USB audio guide; OLED retains explanatory messages.
 - Automatic role detection runs at startup only (`deluge.cpp`): try Host, then fall back to Computer if
   `anythingInitiallyAttachedAsUSBHost` is false. There is no automatic runtime role switching. The Mode selector
   supports attaching a device after an empty boot or changing between a computer and a device without rebooting.
@@ -472,3 +473,11 @@ The documentation audit corrected startup-only host instructions in the ports ma
 configuration changes apply, and aligned the user guide's supported formats and outstanding checks with the code.
 Physical USB timing, sustained capture under CPU load, reconnection reliability and MIDI/hub compatibility remain
 unverified by this review. Earlier user reports are not hardware validation of the current head.
+
+### Compact USB status strings (2026-10-29)
+
+Reused the existing `STRING_FOR_MODE` for the USB mode menu title and removed `STRING_FOR_USB_MODE`.
+7SEG status messages now use at most four characters: `COMP`, `OFF`, `NONE`, `FMT`, `SIZE`, `BUSY`, `INIT`, `CLCK`,
+`INTF`, `WAIT`, `RECV`, and `STOP`. The developer packet label is `PKTS`. OLED status messages and distinct error
+states are retained. Earlier references to scrolling status sentences describe the previous UI; developer builds
+can still scroll a status code followed by its packet count. The user guide lists the current codes.
