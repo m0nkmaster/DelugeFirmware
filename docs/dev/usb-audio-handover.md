@@ -11,7 +11,7 @@ limits. The user has now reported working USB audio with **both TONEX ONE and TO
 user hardware report for the high-speed build, not exhaustive compatibility, power or load testing. Do not describe
 the implementation as universal.
 
-Repository: `/Users/robmacdonald/Documents/projects/deluge/DelugeFirmware`.
+Repository: this checkout (use `git rev-parse --show-toplevel`; local paths vary).
 Branch: `feat/usb-audio-host`.
 Fork PR: <https://github.com/m0nkmaster/DelugeFirmware/pull/3> (draft).
 Target: **m0nkmaster/DelugeFirmware:main**, not Synthstrom's repository or the fork's default `community` branch.
@@ -22,6 +22,8 @@ The branch was rebased onto upstream `main` at `00c0b3b7609e5ffa1f33493d99b64663
 The seven feature commits replayed without conflicts or patch changes. The subsequent commit `19640530c` moves OLED
 status text up six pixels. Check `git status`, `git log`, and the PR base before continuing; local commits may not
 have been pushed.
+Historical commit IDs below refer to earlier branch revisions and may no longer be ancestors of the current head.
+Do not assume unrelated local branches are included.
 
 ## What is implemented
 
@@ -38,7 +40,8 @@ have been pushed.
 
 ### USB roles, settings, and power
 
-- `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` controls the peripheral interface presented to a computer at startup.
+- `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` controls the peripheral interface presented the next time computer
+  mode opens (at startup or after a role change). Cable reconnection alone does not rebuild the configuration.
 - `DIRECT MONITORING` (`MONI`) controls direct monitoring. `SEND TO COMPUTER > MAIN MIX / LINE IN` chooses what a computer receives; it does not
   select the TONEX capture source.
 - `SETTINGS > USB > MODE` selects `COMPUTER` (`COMP`) or `HOST`, affecting MIDI and audio. The next boot uses
@@ -209,7 +212,8 @@ electrical behavior, real BRDY/FRDY timing, or audio performance under load.
 
 See the final verification record below. Preserve the distinction between automated validation and hardware results.
 
-Hardware test procedure (packet reception reported below; complete recording/playback checks remain pending):
+Hardware test procedure (recording and both TONEX models have user-reported success below; repeatable load,
+reconnection, role-switch and MIDI/hub checks remain pending):
 
 1. Use the built `build/Release/deluge.bin`; record its SHA-256 and the branch commit. Follow the SD precautions below.
 2. Power the Deluge from DC and connect one TONEX directly with the host adapter and a known data cable.
@@ -302,8 +306,8 @@ TONEX model was connected or confirm a recorded clip/playback test. Do not mark 
 The user then asked how to select USB while recording directly into a kit sample. Code inspection confirms that this
 separate recorder still automatically selects analogue line/mic input; it has no USB source selector.
 
-Complete recording/playback checks, load performance, power delivery and high-speed MIDI/hub compatibility remain
-unverified. Update this section after each device test, distinguishing reported observations from assumptions.
+At that point, complete recording/playback checks, load performance, power delivery and high-speed MIDI/hub
+compatibility remained unverified. Later recording and device reports are recorded below.
 
 ### Successful recording report and temporary-file investigation
 
@@ -328,7 +332,8 @@ A verified Mac backup of REC00096 is at
 `f95380c9216a7353181289b037859f4f5607f74821d0e976d7623ecc0d0b9ca2`.
 An approval request to create a separate browsable copy at `SAMPLES/USB_RECORDINGS/REC00096.WAV` was interrupted by
 the user. Subsequent inspection confirmed that destination does not exist. No copy to that location is claimed and no
-temporary recordings were moved or deleted. The SD remains mounted for inspection; safely eject it before removal.
+temporary recordings were moved or deleted. The SD was mounted for that inspection; this is a historical record,
+not its current mount state. Re-identify it before any further access and safely eject it before removal.
 
 ### Both TONEX models confirmed working; cleanup (2026-10-27)
 
@@ -454,3 +459,16 @@ including 38 USB host-driver/MIDI integration tests). The source moves were comp
 implementations to verify receive setup, connection initialization and MIDI completion behavior were preserved.
 The Release ELF has no timing counter/getter; Debug includes them. The memory table above includes these review
 fixes; Release heap cost increased by 64 bytes from the earlier measurement. `git diff --check` passed.
+
+### PR review and documentation audit (2026-10-29)
+
+Reviewed PR head `af821c5f88cb12bd34c17c49c370e129c23b75ae` against base `912d9f58e`, including format selection,
+clock setup, packet conversion, teardown, role changes and affected MIDI paths. No concrete defects were identified.
+`cmake --build build/tests --config Debug` reported no work to do; all 11 targets passed with
+`ctest --test-dir build/tests -C Debug --output-on-failure`. The branch diff passed `git diff --check`.
+Firmware builds were not repeated during this review; their preceding results are recorded above.
+
+The documentation audit corrected startup-only host instructions in the ports manual, clarified when computer-audio
+configuration changes apply, and aligned the user guide's supported formats and outstanding checks with the code.
+Physical USB timing, sustained capture under CPU load, reconnection reliability and MIDI/hub compatibility remain
+unverified by this review. Earlier user reports are not hardware validation of the current head.

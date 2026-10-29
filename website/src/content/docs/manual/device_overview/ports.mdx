@@ -112,7 +112,13 @@ receiving stereo audio - see [USB Audio](/features/usb_audio).
 
 #### USB host
 
-The Deluge can use its USB type-B connection to act as a USB Host. This requires the Deluge to be DC powered and a USB device connected before the Deluge is powered up.
+The Deluge can use its USB type-B connection to act as a USB host. Power the Deluge from DC and connect the device
+through a USB host adapter. Connecting the device before power-on lets startup detection select host mode. You can
+also select `SETTINGS > USB > MODE > HOST` without rebooting; disconnect any computer first. Changing modes interrupts
+USB MIDI and audio, and the next boot uses startup detection again.
+
+Experimental audio capture is enabled separately in `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` and defaults
+to off. See [USB Audio](/features/usb_audio#experimental-usb-host-input) for setup and compatibility limits.
 
 #### MIDI implementation chart
 
