@@ -542,7 +542,7 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
         publishPacket(static_cast<size_t>(received));
     }
 #if ENABLE_TEXT_OUTPUT
-    uint16_t elapsed = static_cast<uint16_t>(*TCNT[TIMER_SYSTEM_FAST] - started);
+    auto elapsed = static_cast<uint16_t>(*TCNT[TIMER_SYSTEM_FAST] - started);
     if (elapsed > max_irq_ticks.load(std::memory_order_relaxed))
     {
         max_irq_ticks.store(elapsed, std::memory_order_relaxed);
