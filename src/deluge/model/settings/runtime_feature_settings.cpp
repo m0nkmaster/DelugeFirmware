@@ -219,9 +219,9 @@ void RuntimeFeatureSettings::init() {
 	     static_cast<uint32_t>(RuntimeFeatureStateShortcutOverlay::MenuAndClip)},
 	};
 
-	// Preserve host audio for existing users of this experimental branch when the XML key is absent.
+	// Audio claims composite devices before MIDI, so existing MIDI setups must opt in.
 	SetupOnOffSetting(settings[RuntimeFeatureSettingType::UsbHostAudio], STRING_FOR_USB_HOST_AUDIO, "usbHostAudio",
-	                  RuntimeFeatureStateToggle::On);
+	                  RuntimeFeatureStateToggle::Off);
 }
 
 void RuntimeFeatureSettings::factoryReset(bool showPopup) {

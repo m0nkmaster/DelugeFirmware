@@ -10,6 +10,7 @@
 #include "gui/ui_timer_manager.h"
 #include "hid/display/display.h"
 #include "hid/display/oled.h"
+#include "util/cfunctions.h"
 #include <cstdio>
 
 namespace deluge::gui::menu_item::usb {
@@ -28,11 +29,14 @@ public:
 	void drawPixelsForOled() override {
 		auto& canvas = hid::display::OLED::main;
 #if ENABLE_TEXT_OUTPUT
-		canvas.drawStringCentredShrinkIfNecessary(statusText(), 22, 18, 20);
+		canvas.drawStringCentredShrinkIfNecessary(statusText(), 14, 18, 20);
 		char count[32];
 		snprintf(count, sizeof(count), "%s: %lu", l10n::get(l10n::String::STRING_FOR_USB_PACKETS),
 		         static_cast<unsigned long>(usb_hstd_audio_packet_count()));
-		canvas.drawStringCentredShrinkIfNecessary(count, 42, 12, 12);
+		canvas.drawStringCentredShrinkIfNecessary(count, 36, 12, 12);
+		snprintf(count, sizeof(count), "Audio IRQ max: %lu us",
+		         static_cast<unsigned long>(fastTimerCountToUS(usb_hstd_audio_max_irq_ticks())));
+		canvas.drawStringCentredShrinkIfNecessary(count, 50, 12, 12);
 #else
 		canvas.drawStringCentredShrinkIfNecessary(statusText(), 28, 18, 20);
 #endif

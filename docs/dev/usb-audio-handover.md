@@ -1,6 +1,6 @@
 # USB audio and runtime USB roles: project handover
 
-Last updated: 2026-10-27. Keep this file current when changing this feature or recording a hardware result.
+Last updated: 2026-10-29. Keep this file current when changing this feature or recording a hardware result.
 
 ## Start here
 
@@ -43,7 +43,8 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
 - `SETTINGS > USB > MODE` selects `COMPUTER` (`COMP`) or `HOST`, affecting MIDI and audio. The next boot uses
   normal startup role detection; the role is not persisted. `USB > STATUS` (`STAT`) reports the mode or host-audio state.
 - `COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) is the separate persisted capability, XML key `usbHostAudio`.
-  It defaults on to preserve existing branch behavior. Off skips audio driver registration, leaving MIDI hosting available.
+  It defaults off to preserve MIDI on combined audio/MIDI devices. Off skips audio driver registration, leaving MIDI hosting available.
+  Explicit saved preferences are retained; this default applies when the XML key is absent or settings are reset.
   A change queues host reinitialization without changing the requested role; computer connections are left alone.
 - Role changes interrupt the current USB audio/MIDI connection but do not restart the song or the Deluge.
 - On a computer connection, disconnect the computer before asking the Deluge to become host. The guard uses VBUS
@@ -363,3 +364,82 @@ established. This menu/capability change does not claim to resolve reconnection 
   registration, an uninterrupted computer connection, deferred host reopening, and preserving a queued Computer role.
   Debug and Release builds passed; all new 7SEG navigation/option/popup translations were checked for four-character
   length. These are software checks, not physical display or reconnection tests. No SD-card write was performed.
+
+### Upstream preparation and memory review (2026-10-29)
+
+Rebased onto upstream/fork `main` at `912d9f58e`. Host audio now defaults **off** when `usbHostAudio` is absent,
+preserving MIDI on supported composite audio/MIDI devices. Explicit saved preferences still apply.
+
+Both receive paths now decode into one shared 32-frame stereo scratch buffer (256 bytes), publishing each chunk to
+the existing input ring. This replaces the 8192-byte whole-packet decoder buffer, saving **7936 bytes of SDRAM**
+without reducing packet size or supported formats. Packet counts remain per packet. Regressions check ordered stereo
+samples across a full-speed chunk boundary and all 1024 mono frames of a maximum-size high-speed packet.
+
+Measured with matching Release builds, GCC 14.2.1, existing `ENABLE_RTT=ON` configuration. Baseline is clean `main`
+at `912d9f58e`; new is `89f10902f` plus these working-tree changes. Values include their respective version metadata.
+
+| Section | Internal RAM delta (bytes) | External SDRAM delta (bytes) |
+| --- | ---: | ---: |
+| Code | +6936 | 0 |
+| Read-only data | +704 | +792 |
+| Initialized data | +32 | +672 |
+| Zero-initialized data (BSS) | +1328 | +2240 |
+| Section total | **+9000** | **+3704** |
+| Available heap, including placement/alignment | **-9024** | **-3936** |
+
+The final available heaps are 1080044 bytes internal and 66861152 bytes external. Combined heap reduction versus
+`main` is **12960 bytes (12.66 KiB)**, including code and read-only data because firmware executes from RAM.
+
+Largest identifiable working-buffer additions: 1025-byte internal packet buffer, 256-byte SDRAM decoding buffer,
+and 1920 bytes of SDRAM for six MIDI receive buffers growing from 192 to 512 bytes each. The existing USB input/output
+rings are reused. These static costs remain when host audio is disabled. USB controller FIFO reservations are separate
+hardware storage, not part of these RAM/SDRAM totals. The ELF comparison does not measure runtime allocation peaks,
+parser stack use, interrupt duration, or audio performance under load.
+
+Local measurement artifacts: `build/usb-memory-review/main-912d9f58e.elf`, `usb-host-reviewed.elf`, and `comparison.txt`.
+Reproduce the comparison with `dbt elfsize --baseline <main.elf> <branch.elf>` using the same build configuration.
+
+Validation: Release firmware build passed; all 11 CTest targets passed, including both new packet regressions
+(34 host-driver tests). `git diff --check` passed. Existing composite-device opt-out tests pass. Physical MIDI/hub
+regressions, role-switch tests, and IRQ timing measurements remain outstanding; no SD-card write was performed.
+
+### Whole-branch review fixes and timing preparation (2026-10-29)
+
+USB MIDI polling now processes queued role changes before checking controller initialization. A failed host or
+computer open can therefore be retried from the menu. Session teardown resets both MIDI send cursors to zero so
+an interrupted multi-device send cannot block receive arming in the next session.
+
+The existing USB MIDI polling/setup/reset and connection-state methods live in `src/deluge/io/midi/midi_usb.cpp`.
+The existing host MIDI completion function lives in `src/RZA1/usb/r_usb_hmidi/src/r_usb_hmidi_receive.c`. This lets
+the tests compile production setup, completion, polling and reset together instead of replacing them with mocks.
+FIFO reads and controller opening remain simulated. Coverage includes full 64/512-byte packets, a short high-speed
+packet, a zero-length packet, retrying both failed roles, and receiving again after an interrupted multi-device send.
+Both bug regressions were confirmed to fail with their fixes temporarily removed, then the fixes were restored.
+
+Debug builds now show `Audio IRQ max: <n> us` under `SETTINGS > USB > STATUS` on OLED. The fast hardware timer measures
+the audio BRDY handler, including packet reads, decoding, input-ring publication and any higher-priority preemption.
+It excludes the rest of the USB ISR and measures elapsed time, not total CPU utilization. Resolution is about 1.9 us;
+unsigned subtraction handles timer wrap provided one handler call lasts less than about 127 ms. The maximum resets
+on stream teardown. Sampling/storing the maximum does not log or allocate inside the ISR. Release builds omit both
+the timing code and display. A mock-timer regression checks maximum retention, wrap and session reset.
+
+**Physical timing/load validation remains pending.** Software tests do not supply a measured hardware duration.
+Use `build/Debug/deluge.bin` to perform the following after normal firmware installation precautions:
+
+1. Power from DC, enable host audio explicitly, connect TONEX, and open USB Status. Record the maximum while idle.
+2. Play a demanding representative song with effects and MIDI traffic. Record USB input for at least ten minutes;
+   note song, device, firmware checksum, duration, maximum handler time, and any dropout, MIDI stall or voice loss.
+3. Inspect/play back the recording for discontinuities; packet counts alone do not prove correct capture.
+4. Repeat with the other TONEX and with a MIDI controller/hub, comparing host audio off and on. Test unplug/replug,
+   Computer/Host transitions and toggling host audio during playback and multi-device MIDI output.
+5. A maximum approaching/exceeding the 125 us high-speed service interval requires investigation. A smaller value
+   alone does not prove schedulability or capture continuity. Debug-build timing is not a Release timing guarantee;
+   investigate marginal results with equivalent instrumentation and optimization settings before upstream acceptance.
+
+No SD-card copy, physical device test or measured timing result is claimed by these changes.
+
+Final software validation: Debug and Release firmware builds passed; all 11 CTest targets passed (331 unit tests,
+including 38 USB host-driver/MIDI integration tests). The source moves were compared against their previous
+implementations to verify receive setup, connection initialization and MIDI completion behavior were preserved.
+The Release ELF has no timing counter/getter; Debug includes them. The memory table above includes these review
+fixes; Release heap cost increased by 64 bytes from the earlier measurement. `git diff --check` passed.
