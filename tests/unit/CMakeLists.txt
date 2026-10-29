@@ -74,6 +74,13 @@ file(GLOB_RECURSE deluge_SOURCES
         ../../src/deluge/io/midi/midi_queue.cpp
         # For FFT magnitude tests
         ../../src/deluge/util/fast_pythag.cpp
+        # For hosted USB Audio descriptor and sample conversion tests
+        ../../src/deluge/drivers/usb/hosted_audio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp
+        ../../src/RZA1/usb/r_usb_haudio/r_usb_haudio_transport.c
+        ../../src/deluge/drivers/usb/usb_mode.cpp
+        ../../src/deluge/io/midi/midi_usb.cpp
+        ../../src/RZA1/usb/r_usb_hmidi/src/r_usb_hmidi_receive.c
 )
 
 add_executable(UnitTests
@@ -100,11 +107,18 @@ add_executable(UnitTests
         midi_queue_tests.cpp
         fast_pythag_tests.cpp
         tick_interpolation_tests.cpp
+        hosted_audio_tests.cpp
+        usb_host_driver_tests.cpp
+        usb_midi_integration_tests.cpp
 )
 add_test(NAME UnitTests
         COMMAND UnitTests)
 target_sources(UnitTests PRIVATE ${deluge_SOURCES})
+set_source_files_properties(../../src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp usb_host_driver_tests.cpp
+        PROPERTIES COMPILE_DEFINITIONS ENABLE_TEXT_OUTPUT=1)
+configure_file(../../src/deluge/util/firmware_version.h.in generated/util/firmware_version.h @ONLY)
 target_include_directories(UnitTests PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
         # include the non test project source
         mocks
         ../../src

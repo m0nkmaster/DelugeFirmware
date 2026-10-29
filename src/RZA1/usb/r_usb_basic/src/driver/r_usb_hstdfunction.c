@@ -79,7 +79,6 @@ extern usb_hcdc_classrequest_utr_t g_usb_hcdc_cls_req[];
 /***********************************************************************************************************************
 Private global variables and functions
 ***********************************************************************************************************************/
-static uint16_t g_usb_cstd_driver_open = USB_FALSE;
 
 /***********************************************************************************************************************
  Renesas Abstracted Host Standard functions
@@ -236,7 +235,7 @@ void usb_hdriver_init(usb_utr_t* ptr, usb_cfg_t* cfg)
 {
     uint16_t i;
 
-    if (USB_FALSE == g_usb_cstd_driver_open)
+    // Reopening the controller after a runtime role switch must discard pending requests from the old session.
     {
         usb_cstd_sche_init(); /* Scheduler init */
 
@@ -247,8 +246,6 @@ void usb_hdriver_init(usb_utr_t* ptr, usb_cfg_t* cfg)
             g_usb_cstd_event.code[i]         = USB_STS_NONE;
             g_usb_cstd_event.ctrl[i].address = USB_NULL;
         }
-
-        g_usb_cstd_driver_open = USB_TRUE;
     }
 
     if (USB_HS == cfg->usb_speed)

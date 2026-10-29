@@ -30,8 +30,11 @@
 /***********************************************************************************************************************
 Includes   <System Includes> , "Project Includes"
 ***********************************************************************************************************************/
+#include "RZA1/intc/devdrv_intc.h"
 #include "RZA1/system/r_typedefs.h"
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
+#include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_extern.h"
+#include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 
 #include "deluge/drivers/uart/uart.h"
 #include "deluge/drivers/usb/usb_audio.h"
@@ -56,6 +59,27 @@ static usb_descriptor_t usb_descriptor = {
 };
 
 extern uint8_t usbCurrentlyInitialized;
+extern uint16_t g_usb_peri_connected;
+extern uint16_t g_usb_hstd_use_pipe[USB_NUM_USBIP];
+void resetUsbMidiConnections(void);
+
+static void stopUSBSession(void)
+{
+    // Stop USB interrupts before touching session state or stopping the controller clock. Other interrupts (audio,
+    // timers) remain enabled; opening a new role takes at least 100ms.
+    R_INTC_Disable(INTC_ID_USBI0);
+    USB200.INTENB0 = 0;
+    USB200.INTENB1 = 0;
+    USB200.BRDYENB = 0;
+    USB200.NRDYENB = 0;
+    USB200.BEMPENB = 0;
+    usbAudioStopAll();
+    usb_hstd_audio_stop();
+    resetUsbMidiConnections();
+    g_usb_peri_connected                  = 0;
+    g_usb_hstd_use_pipe[WHICH_USB_MODULE] = 0;
+    usbCurrentlyInitialized               = false;
+}
 
 // Check lock and lock it before calling any of these!
 
@@ -64,21 +88,26 @@ void openUSBHost(void)
     usb_ctrl_t ctrl;
     usb_cfg_t cfg;
 
-    ctrl.module   = WHICH_USB_MODULE;
-    ctrl.type     = USB_HHID;
-    cfg.usb_speed = USB_FS;
+    ctrl.module = WHICH_USB_MODULE;
+    ctrl.type   = USB_HHID;
+    // Negotiate high speed when the attached device supports it; FS/LS devices still use their native speed.
+    cfg.usb_speed = USB_HS;
     cfg.usb_mode  = USB_HOST;
     usb_err_t err = R_USB_Open(&ctrl, &cfg);
     if (USB_SUCCESS != err)
     {
         uartPrintln("Failed to open USB0\n");
     }
-    usbCurrentlyInitialized = true;
+    usbCurrentlyInitialized = (err == USB_SUCCESS);
 }
 
 void closeUSBHost(void)
 {
-
+    stopUSBSession();
+    usb_utr_t utr = {0};
+    utr.ip        = WHICH_USB_MODULE;
+    utr.ipp       = usb_hstd_get_usb_ip_adr(utr.ip);
+    usb_hstd_vbus_control(&utr, USB_PORT0, USB_VBOFF);
     usb_ctrl_t ctrl;
     ctrl.module = WHICH_USB_MODULE;
     ctrl.type   = USB_HHID;
@@ -103,11 +132,13 @@ void openUSBPeripheral(void)
     usb_descriptor.p_config_f = usbPeripheralConfigurationDescriptor(usbAudioStartPeripheral());
     usb_err_t ret_code        = R_USB_Open(&ctrl, &cfg); /* Initializes the USB module */
 
-    usbCurrentlyInitialized = true;
+    usbCurrentlyInitialized = (ret_code == USB_SUCCESS);
 }
 
 void closeUSBPeripheral(void) // You can't immediately close this after opening it - you'd better wait a little while.
 {
+    stopUSBSession();
+    hw_usb_pclear_dprpu();
     usb_ctrl_t ctrl;
     ctrl.module = WHICH_USB_MODULE;
     ctrl.type   = USB_PMSC;

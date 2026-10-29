@@ -29,6 +29,8 @@
 #ifndef R_USB_TYPEDEF_H
 #define R_USB_TYPEDEF_H
 
+#include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
+
 /***********************************************************************************************************************
  Typedef definitions
  ***********************************************************************************************************************/
@@ -45,6 +47,8 @@ typedef struct USB_HCDREG
     uint16_t devaddr;          /* Device address */
     uint16_t devstate;         /* Device state */
     uint16_t ifclass;          /* Interface Class */
+    uint16_t ifsubclass;       /* Interface subclass, or USB_IFSUBCLS_ANY */
+    uint16_t ifprotocol;       /* Interface protocol, or USB_IFPROTO_ANY */
     uint16_t* p_tpl;           /* Target peripheral list(Vendor ID, Product ID) */
     uint16_t* p_pipetbl;       /* Pipe Define Table address */
     usb_cb_t classinit;        /* Driver init */

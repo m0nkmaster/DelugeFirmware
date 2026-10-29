@@ -122,6 +122,7 @@ std::atomic<uint32_t> toHostRead{0};
 std::atomic<int32_t> toHostTxOffset{-1};
 
 volatile bool fromHostStreaming = false;
+std::atomic<bool> hosted_input_streaming{false};
 volatile bool toHostStreaming = false;
 volatile bool fromHostDmaBusy = false;
 volatile bool toHostDmaBusy = false;
@@ -611,6 +612,7 @@ extern "C" void usbAudioStopAll(void) {
 	if (toHostStreaming) {
 		stopToHost();
 	}
+	deluge::usb_audio::stopHostedInput();
 }
 
 extern "C" uint16_t usbAudioHandleBrdy(uint16_t pipeBits) {
@@ -689,11 +691,37 @@ extern "C" void usbAudioHandleSof(void) {
 namespace deluge::usb_audio {
 
 bool receivingFromHost() {
-	return fromHostStreaming;
+	return fromHostStreaming || hosted_input_streaming;
 }
 
 bool sendingToHost() {
 	return toHostStreaming;
+}
+
+void startHostedInput() {
+	fromHostGeneration.fetch_add(1, std::memory_order_relaxed);
+	hosted_input_streaming = true;
+}
+
+void stopHostedInput() {
+	hosted_input_streaming = false;
+	fromHostGeneration.fetch_add(1, std::memory_order_relaxed);
+}
+
+void receiveHostedInput(std::span<const int32_t> interleavedStereo) {
+	if (!hosted_input_streaming) {
+		return;
+	}
+
+	size_t num_frames = interleavedStereo.size() / NUM_MONO_INPUT_CHANNELS;
+	uint32_t written = fromHostWritten.load(std::memory_order_relaxed);
+	uint32_t space = kFromHostRingFrames - (written - fromHostRead.load(std::memory_order_acquire));
+	num_frames = std::min<size_t>(num_frames, space);
+	for (size_t frame = 0; frame < num_frames; ++frame) {
+		fromHostRing[(written + frame) & (kFromHostRingFrames - 1)] = {.l = interleavedStereo[frame * 2],
+		                                                               .r = interleavedStereo[(frame * 2) + 1]};
+	}
+	fromHostWritten.store(written + num_frames, std::memory_order_release);
 }
 
 int32_t* getInputRingStart() {
@@ -723,7 +751,7 @@ void fillInputRing(uint32_t rxPosition, size_t numSamples, size_t txQueued) {
 				inputRing[frame * 2] = 0;
 				inputRing[frame * 2 + 1] = 0;
 			}
-			if (fromHostStreaming) {
+			if (fromHostStreaming || hosted_input_streaming) {
 				skipFromHost(gap);
 			}
 		}
@@ -733,7 +761,7 @@ void fillInputRing(uint32_t rxPosition, size_t numSamples, size_t txQueued) {
 	while (numSamples) {
 		size_t numThisTime = std::min<size_t>(numSamples, kRingFrames - inputRingWriteFrame);
 		int32_t* output = &inputRing[inputRingWriteFrame * 2];
-		if (fromHostStreaming) {
+		if (fromHostStreaming || hosted_input_streaming) {
 			readFromHost(output, numThisTime, txQueued);
 			inputRingSilentFrames = 0;
 		}

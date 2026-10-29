@@ -744,29 +744,6 @@ bool ConnectedUSBMIDIDevice::consumeSendData() {
 	return true;
 }
 
-void ConnectedUSBMIDIDevice::setup() {
-	numBytesSendingNow = 0;
-	currentlyWaitingToReceive = false;
-	numBytesReceived = 0;
-
-	// default to only a single port
-	maxPortConnected = 0;
-}
-ConnectedUSBMIDIDevice::ConnectedUSBMIDIDevice() {
-	currentlyWaitingToReceive = 0;
-	sq = 0;
-	canHaveMIDISent = 0;
-	numBytesReceived = 0;
-	memset(receiveData, 0, sizeof(receiveData));
-	memset(dataSendingNow, 0, MIDI_SEND_BUFFER_LEN_INNER * 4);
-	numBytesSendingNow = 0;
-	memset(sendDataRingBuf, 0, MIDI_SEND_BUFFER_LEN_RING);
-	ringBufWriteIdx = 0;
-	ringBufReadIdx = 0;
-
-	maxPortConnected = 0;
-}
-
 /*
     for (int32_t d = 0; d < hostedMIDIDevices.getNumElements(); d++) {
         MIDIDeviceUSBHosted* device = (MIDIDeviceUSBHosted*)hostedMIDIDevices.getElement(d);

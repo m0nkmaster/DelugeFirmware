@@ -33,6 +33,7 @@
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
 #include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_extern.h"
 #include "RZA1/usb/r_usb_basic/src/driver/inc/r_usb_typedef.h"
+#include "RZA1/usb/r_usb_haudio/r_usb_haudio_if.h"
 #include "RZA1/usb/r_usb_hmidi/r_usb_hmidi_if.h"
 #include "RZA1/usb/r_usb_hmidi/src/inc/r_usb_hmidi.h"
 #include "RZA1/usb/userdef/r_usb_hmidi_config.h"
@@ -539,6 +540,10 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
     /* Loop for Endpoint Descriptor search. Stop at a descriptor which doesn't fit within length */
     while (ofdsc < length && ofdsc + table[ofdsc] <= length)
     {
+        if (length - ofdsc < 2 || table[ofdsc] < 2 || table[ofdsc] > length - ofdsc)
+        {
+            return USB_ERROR;
+        }
         /* Branch descriptor type */
         switch (table[ofdsc + 1])
         {
@@ -555,6 +560,11 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
                 /* Endpoint Descriptor */
             case USB_DT_ENDPOINT:
 
+                if (table[ofdsc] < 7)
+                {
+                    return USB_ERROR;
+                }
+
                 pipetbl = R_USB_HmidiGetPipetbl(ptr, g_usb_hmidi_devaddr[ptr->ip]);
 
                 int endpointType = table[ofdsc + 3] & USB_EP_TRNSMASK;
@@ -562,6 +572,14 @@ uint16_t usb_hmidi_pipe_info(usb_utr_t* ptr, uint8_t* table, uint16_t speed, uin
                 // Only allow bulk or interrupt endpoints
                 if (endpointType != USB_EP_BULK && endpointType != USB_EP_INT)
                     goto moveOnToNextDescriptor;
+
+                // High-speed bulk packets can be 512 bytes. Interrupt pipes have fixed 64-byte FIFO storage;
+                // reject larger endpoints (including extra-transaction flags) before reserving any pipe.
+                uint16_t max_packet = table[ofdsc + 4] | ((uint16_t)table[ofdsc + 5] << 8);
+                if (max_packet == 0 || max_packet > (endpointType == USB_EP_BULK && speed == USB_HSCONNECT ? 512 : 64))
+                {
+                    return USB_ERROR;
+                }
 
                 int endpointDirection = table[ofdsc + 2] & USB_EP_DIRMASK;
 
@@ -638,19 +656,19 @@ pickedReceivePipe:
                         break;
 
                     case USB_PIPE2:
-                        bufferNumber = 9;
+                        bufferNumber = 16;
                         break;
 
                     case USB_PIPE3:
-                        bufferNumber = 10;
+                        bufferNumber = 24;
                         break;
 
                     case USB_PIPE4:
-                        bufferNumber = 11;
+                        bufferNumber = 32;
                         break;
 
                     case USB_PIPE5:
-                        bufferNumber = 12;
+                        bufferNumber = 40;
                         break;
 
                     case USB_PIPE6:
@@ -670,7 +688,10 @@ pickedReceivePipe:
                         break;
                 }
 
-                pipetbl[pipeTableOffset + 2] = (uint16_t)USB_BUF_SIZE(64u) | USB_BUF_NUMB(bufferNumber);
+                // Eight 64-byte blocks per bulk pipe (8..47), independent of the connected device's speed.
+                // Audio's double-buffered PIPE2 instead uses 48..79; fixed interrupt buffers remain 4..7.
+                pipetbl[pipeTableOffset + 2] =
+                    (uint16_t)USB_BUF_SIZE(endpointType == USB_EP_BULK ? 512u : 64u) | USB_BUF_NUMB(bufferNumber);
 
                 /* Check pipe information */
                 retval = usb_hstd_chk_pipe_info(speed, (uint16_t*)&pipetbl[pipeTableOffset],
@@ -876,7 +897,13 @@ void usb_registration(usb_utr_t* ptr)
     usb_hcdreg_t driver;
     uint8_t i;
 
-    driver.ifclass    = (uint16_t)USB_IFCLS_AUD;                /* Interface class */
+    /* Audio must be registered before MIDI: a composite audio/MIDI interface is claimed by the audio driver, while a
+     * MIDI-only device falls through to the MIDIStreaming subclass registrations below. */
+    usb_hstd_audio_register(ptr);
+
+    driver.ifclass    = (uint16_t)USB_IFCLS_AUD; /* Interface class */
+    driver.ifsubclass = 0x03;                    /* MIDIStreaming subclass */
+    driver.ifprotocol = USB_IFPROTO_ANY;
     driver.p_tpl      = (uint16_t*)&g_usb_hmidi_devicetpl;      /* Target peripheral list */
     driver.classinit  = (usb_cb_t)&usb_hstd_dummy_function;     /* Driver init */
     driver.classcheck = (usb_cb_check_t)&R_USB_HmidiClassCheck; /* Driver check */

@@ -17,6 +17,7 @@
 
 #include "settings.h"
 #include "devSysexSetting.h"
+#include "drivers/usb/usb_mode.h"
 #include "emulated_display.h"
 #include "hid/display/display.h"
 #include "hid/display/oled_canvas/canvas.h"
@@ -74,8 +75,21 @@ SettingToggle menuTrimFromStartOfAudioClip(RuntimeFeatureSettingType::TrimFromSt
 SettingToggle menuShowBatteryLevel(RuntimeFeatureSettingType::ShowBatteryLevel);
 RoundedCornersSettingToggle menuRoundedCorners(RuntimeFeatureSettingType::RoundedCorners);
 Setting menuShortcutOverlay(RuntimeFeatureSettingType::ShortcutOverlay);
+class UsbHostAudioSetting final : public SettingToggle {
+public:
+	UsbHostAudioSetting() : SettingToggle(RuntimeFeatureSettingType::UsbHostAudio) {}
+	void writeCurrentValue() override {
+		SettingToggle::writeCurrentValue();
+		deluge::usb::setHostAudioEnabled(runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::UsbHostAudio));
+		if (deluge::usb::hostMode()) {
+			display->displayPopup(l10n::get(l10n::String::STRING_FOR_USB_MODE_SWITCHING));
+		}
+	}
+};
+UsbHostAudioSetting menuUsbHostAudio;
 
 std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettings> subMenuEntries{
+    &menuUsbHostAudio,
     &menuDrumRandomizer,
     &menuFineTempo,
     &menuQuantize,

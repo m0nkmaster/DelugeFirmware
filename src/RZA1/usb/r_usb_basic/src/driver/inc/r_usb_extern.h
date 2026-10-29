@@ -258,7 +258,9 @@ inline static void usb_cstd_chg_curpipe_rohan_fast(uint16_t pipe)
 
         volatile uint16_t* p_reg;
 #if USB_CFG_USE_USBIP == USB_CFG_IP0
-        p_reg = (void*)&(USB200.CFIFOSEL);
+        // USB200 expands to the Renesas memory-mapped register cast.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-cstyle-cast)
+        p_reg = &(USB200.CFIFOSEL);
 #else
         p_reg = (void*)&(USB201.CFIFOSEL);
 #endif /* USB_CFG_USE_USBIP == USB_CFG_IP0 */
