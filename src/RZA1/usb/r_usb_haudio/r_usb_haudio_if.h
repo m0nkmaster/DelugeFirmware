@@ -7,6 +7,8 @@
 
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
 
+// Public names follow the Renesas C interface.
+// NOLINTBEGIN(readability-identifier-naming)
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,7 +21,7 @@ void usb_hstd_audio_detach_device(uint16_t address);
 // Called directly from the USB ISR. Returns the BRDY bits consumed without posting a cooperative task message.
 uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits);
 
-typedef enum {
+typedef enum { // NOLINT(modernize-use-using): shared with C sources.
     USB_HOST_AUDIO_IDLE,
     USB_HOST_AUDIO_UNSUPPORTED,
     USB_HOST_AUDIO_CONFIG_TOO_LARGE,
@@ -42,3 +44,5 @@ uint32_t usb_hstd_audio_max_irq_ticks(void);
 #ifdef __cplusplus
 }
 #endif
+
+// NOLINTEND(readability-identifier-naming)

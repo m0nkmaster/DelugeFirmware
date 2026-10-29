@@ -2,6 +2,8 @@
 #pragma once
 #include "RZA1/usb/r_usb_basic/r_usb_basic_if.h"
 
+// Public names follow the Renesas C interface.
+// NOLINTBEGIN(readability-identifier-naming)
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,3 +17,5 @@ int32_t usb_hstd_audio_transport_read(usb_utr_t* ptr, uint8_t* bytes, uint16_t c
 #ifdef __cplusplus
 }
 #endif
+
+// NOLINTEND(readability-identifier-naming)

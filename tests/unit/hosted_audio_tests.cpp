@@ -14,8 +14,8 @@ TEST_GROUP(HostedAudio){};
 
 TEST(HostedAudio, RealTonexOneAndPlugDescriptorsSelectHighSpeed44100Capture) {
 	for (const auto& descriptor : {usb_audio_fixtures::tonexOne, usb_audio_fixtures::tonexPlug}) {
-		CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::Full).has_value());
-		auto stream = findInputStream(descriptor, 44100, 2, BusSpeed::High);
+		CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::FULL).has_value());
+		auto stream = findInputStream(descriptor, 44100, 2, BusSpeed::HIGH);
 		CHECK(stream.has_value());
 		CHECK(stream->version == AudioClassVersion::UAC2);
 		CHECK_EQUAL(3, stream->interfaceNumber);
@@ -34,19 +34,19 @@ TEST(HostedAudio, RealTonexOneAndPlugDescriptorsSelectHighSpeed44100Capture) {
 TEST(HostedAudio, HighSpeedBandwidthUsesMicroframesAndRejectsExtraTransactions) {
 	auto descriptor = usb_audio_fixtures::tonexOne;
 	descriptor[254] = 48; // ceil(44100/8000) * two channels * four bytes
-	CHECK(findInputStream(descriptor, 44100, 2, BusSpeed::High).has_value());
+	CHECK(findInputStream(descriptor, 44100, 2, BusSpeed::HIGH).has_value());
 	descriptor[254] = 47;
-	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::High).has_value());
+	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::HIGH).has_value());
 	descriptor[254] = 0;
 	descriptor[255] = 4; // Maximum single-transaction high-speed payload, 1024 bytes.
-	CHECK(findInputStream(descriptor, 44100, 2, BusSpeed::High).has_value());
-	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::Full).has_value());
+	CHECK(findInputStream(descriptor, 44100, 2, BusSpeed::HIGH).has_value());
+	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::FULL).has_value());
 	descriptor[254] = 56;
 	descriptor[255] = 8; // An additional transaction per microframe is not implemented.
-	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::High).has_value());
+	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::HIGH).has_value());
 	descriptor[255] = 0;
 	descriptor[256] = 2;
-	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::High).has_value());
+	CHECK_FALSE(findInputStream(descriptor, 44100, 2, BusSpeed::HIGH).has_value());
 }
 
 TEST(HostedAudio, SelectsUac1Stereo24Bit44100Input) {

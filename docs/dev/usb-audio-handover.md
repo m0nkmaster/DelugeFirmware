@@ -469,3 +469,22 @@ Reused the existing `STRING_FOR_MODE` for the USB mode menu title and removed `S
 `INTF`, `WAIT`, `RECV`, and `STOP`. The developer packet label is `PKTS`. OLED status messages and distinct error
 states are retained. Earlier references to scrolling status sentences describe the previous UI; developer builds
 can still scroll a status code followed by its packet count. The user guide lists the current codes.
+
+### Clang diagnostics cleanup (2026-10-29)
+
+The PR's clang-tidy workflow reports success even when diagnostics exist (`fail_on_problems: false`). Its job log
+contains more findings than the inline annotations show. The cleanup applies the configured variable/enum naming,
+uses `std::array` for new C++ buffers, initializes stream fields, checks optional stream state at helper entry points,
+and removes dead branches and disabled code from the moved MIDI receive function. Existing MIDI integration tests
+exercise the retained receive/completion behavior. The Renesas typedef header now includes its required public USB
+types; the redundant FIFO register pointer cast is removed. Narrow lint exceptions retain the C API names, required
+descriptor/register casts and the wire-order descriptor parser. No project-wide lint rules were weakened.
+
+The website formatting change applies the exact Prettier patch from CI. The separate website build failure at
+`a42be7910` is GitHub Pages configuration (Pages is not enabled for the fork), not an MDX compilation result.
+
+Validation: Debug and Release firmware builds and all 11 CTest targets passed. Clang-tidy 19 reports no diagnostics
+for the host class, descriptor parser or role-switch implementation; standalone public-header checks no longer have
+missing-type errors. The MIDI receive source is also clean. Existing diagnostics elsewhere in the Renesas headers
+and peripheral-audio implementation are outside this cleanup. Changed C/C++ files pass clang-format 19, and
+`git diff --check` passes. No physical USB or display testing was performed.

@@ -9,10 +9,10 @@
 #include "RZA1/usb/r_usb_basic/src/hw/inc/r_usb_bitdefine.h"
 
 extern "C" {
-extern volatile uint32_t usbLock;
+extern volatile uint32_t usbLock; // NOLINT(readability-identifier-naming): existing C interface.
 extern uint16_t g_usb_usbmode;
-extern uint8_t usbCurrentlyInitialized;
-uint16_t hw_usb_read_intsts();
+extern uint8_t usbCurrentlyInitialized; // NOLINT(readability-identifier-naming): existing C interface.
+uint16_t hw_usb_read_intsts();          // NOLINT(readability-identifier-naming): Renesas C interface.
 void openUSBHost();
 void closeUSBHost();
 void openUSBPeripheral();
@@ -21,47 +21,47 @@ void closeUSBPeripheral();
 
 namespace deluge::usb {
 namespace {
-int pendingMode = -1;
-ModeChangeCallback pendingCallback = nullptr;
-bool audioEnabled = false;
-bool pendingHostRestart = false;
+int pending_mode = -1;
+ModeChangeCallback pending_callback = nullptr;
+bool audio_enabled = false;
+bool pending_host_restart = false;
 } // namespace
 
 bool hostMode() {
-	return usbCurrentlyInitialized && g_usb_usbmode == USB_HOST;
+	return (usbCurrentlyInitialized != 0u) && g_usb_usbmode == USB_HOST;
 }
 
 bool hostAudioEnabled() {
-	return audioEnabled;
+	return audio_enabled;
 }
 
 void setHostAudioEnabled(bool enabled) {
-	if (audioEnabled != enabled) {
-		audioEnabled = enabled;
-		pendingHostRestart = true;
+	if (audio_enabled != enabled) {
+		audio_enabled = enabled;
+		pending_host_restart = true;
 	}
 }
 
 static ModeChangeResult changeMode(bool enabled, bool restartHost) {
-	if (usbCurrentlyInitialized && enabled == hostMode() && !(enabled && restartHost)) {
-		return ModeChangeResult::Success;
+	if ((usbCurrentlyInitialized != 0u) && enabled == hostMode() && !(enabled && restartHost)) {
+		return ModeChangeResult::SUCCESS;
 	}
-	if (usbLock) {
-		return ModeChangeResult::Busy;
+	if (usbLock != 0u) {
+		return ModeChangeResult::BUSY;
 	}
 
 	usbLock = 1;
-	if (enabled && usbCurrentlyInitialized && !hostMode()) {
+	if (enabled && (usbCurrentlyInitialized != 0u) && !hostMode()) {
 		// VBUS alone cannot identify another host: the Deluge's set/clear_vbout functions are no-ops.
 		// A reset/address/configuration state is evidence that a host has actually enumerated this peripheral.
 		// Mask out the suspend bit so suspended-but-only-powered does not look like enumeration.
 		uint16_t status = hw_usb_read_intsts();
-		if ((status & USB_VBSTS) && (status & USB_DVSQS)) {
+		if (((status & USB_VBSTS) != 0u) && ((status & USB_DVSQS) != 0u)) {
 			usbLock = 0;
-			return ModeChangeResult::HostConnected;
+			return ModeChangeResult::HOST_CONNECTED;
 		}
 	}
-	if (usbCurrentlyInitialized) {
+	if (usbCurrentlyInitialized != 0u) {
 		if (hostMode()) {
 			closeUSBHost();
 		}
@@ -76,7 +76,8 @@ static ModeChangeResult changeMode(bool enabled, bool restartHost) {
 		openUSBPeripheral();
 	}
 	usbLock = 0;
-	return usbCurrentlyInitialized && hostMode() == enabled ? ModeChangeResult::Success : ModeChangeResult::StartFailed;
+	return (usbCurrentlyInitialized != 0u) && hostMode() == enabled ? ModeChangeResult::SUCCESS
+	                                                                : ModeChangeResult::START_FAILED;
 }
 
 ModeChangeResult setHostMode(bool enabled) {
@@ -84,27 +85,27 @@ ModeChangeResult setHostMode(bool enabled) {
 }
 
 void requestHostMode(bool enabled, ModeChangeCallback callback) {
-	pendingMode = enabled;
-	pendingCallback = callback;
+	pending_mode = static_cast<int>(enabled);
+	pending_callback = callback;
 }
 
 bool requestedHostMode() {
-	return pendingMode >= 0 ? pendingMode != 0 : hostMode();
+	return pending_mode >= 0 ? pending_mode != 0 : hostMode();
 }
 
 void processPendingModeChange() {
-	if ((pendingMode < 0 && !pendingHostRestart) || usbLock) {
+	if ((pending_mode < 0 && !pending_host_restart) || (usbLock != 0u)) {
 		return;
 	}
-	bool enabled = pendingMode >= 0 ? pendingMode != 0 : hostMode();
-	bool restartHost = pendingHostRestart;
-	auto callback = pendingCallback;
-	pendingMode = -1;
-	pendingCallback = nullptr;
-	pendingHostRestart = false;
-	auto result = changeMode(enabled, restartHost);
+	bool enabled = pending_mode >= 0 ? pending_mode != 0 : hostMode();
+	bool restart_host = pending_host_restart;
+	auto callback = pending_callback;
+	pending_mode = -1;
+	pending_callback = nullptr;
+	pending_host_restart = false;
+	auto result = changeMode(enabled, restart_host);
 	// Opening USB can yield to the UI. Preserve a newer request made during that wait.
-	if (callback && pendingMode < 0) {
+	if ((callback != nullptr) && pending_mode < 0) {
 		callback(result);
 	}
 }

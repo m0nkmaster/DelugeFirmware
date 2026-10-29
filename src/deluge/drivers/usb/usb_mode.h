@@ -18,7 +18,7 @@ bool hostAudioEnabled();
 /// Does not change the requested role or interrupt a computer connection.
 void setHostAudioEnabled(bool enabled);
 
-enum class ModeChangeResult { Success, Busy, HostConnected, StartFailed };
+enum class ModeChangeResult { SUCCESS, BUSY, HOST_CONNECTED, START_FAILED };
 /// Switch USB roles immediately, only from a context where the USB stack is not in use.
 /// VBUS alone does not identify a computer; reject when peripheral enumeration is also detected.
 ModeChangeResult setHostMode(bool enabled);

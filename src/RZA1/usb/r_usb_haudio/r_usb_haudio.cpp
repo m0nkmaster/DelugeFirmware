@@ -40,13 +40,13 @@ constexpr uint16_t kAudioBufferNumber = 48; // 48..79 for two 1024-byte planes; 
 constexpr size_t kMaxPacketBytes      = 1024;
 constexpr size_t kDecodeChunkFrames   = 32;
 
-const uint16_t targetPeripheralList[] = {
+std::array<uint16_t, 2 + (USB_CFG_TPLCNT * 2)> target_peripheral_list = {
     USB_CFG_TPLCNT,
     0,
     USB_CFG_TPL,
 };
 
-uint16_t pipeTable[USB_EPL + 1] = {
+std::array<uint16_t, USB_EPL + 1> pipe_table = {
     kAudioPipe,
     USB_NULL,
     static_cast<uint16_t>(USB_BUF_SIZE(1024u) | USB_BUF_NUMB(kAudioBufferNumber)),
@@ -56,55 +56,54 @@ uint16_t pipeTable[USB_EPL + 1] = {
     USB_PDTBLEND,
 };
 
-std::optional<deluge::hosted_audio::InputStream> selectedStream;
-uint16_t deviceAddress = USB_NODEVICE;
-uint16_t deviceSpeed   = USB_NOCONNECT;
-bool streaming         = false;
-std::atomic<bool> irqStreaming{false};
-bool irqTransportOwned = false; // USB task only; ensures teardown runs even after a receive error.
-usb_utr_t audioContext{};
-std::atomic<usb_host_audio_status_t> audioStatus{USB_HOST_AUDIO_IDLE};
-std::atomic<uint32_t> receivedPackets{0};
+std::optional<deluge::hosted_audio::InputStream> selected_stream;
+uint16_t device_address = USB_NODEVICE;
+uint16_t device_speed   = USB_NOCONNECT;
+bool streaming          = false;
+std::atomic<bool> irq_streaming{false};
+bool irq_transport_owned = false; // USB task only; ensures teardown runs even after a receive error.
+usb_utr_t audio_context{};
+std::atomic<usb_host_audio_status_t> audio_status{USB_HOST_AUDIO_IDLE};
+std::atomic<uint32_t> received_packets{0};
 #if ENABLE_TEXT_OUTPUT
-std::atomic<uint32_t> maxIrqTicks{0};
+std::atomic<uint32_t> max_irq_ticks{0};
 #endif
 static_assert(std::atomic<bool>::is_always_lock_free && std::atomic<uint32_t>::is_always_lock_free);
 
-alignas(4) std::array<uint8_t, kMaxPacketBytes + 1> packetBuffer;
-PLACE_SDRAM_BSS std::array<int32_t, kDecodeChunkFrames * 2> decodedSamples;
-usb_utr_t streamTransfer{};
-usb_utr_t controlTransfer{};
-uint16_t controlSetup[5]{};
-std::array<uint8_t, 4> sampleRateData{};
-uint32_t requestedBytes = 0;
+alignas(4) std::array<uint8_t, kMaxPacketBytes + 1> packet_buffer;
+PLACE_SDRAM_BSS std::array<int32_t, kDecodeChunkFrames * 2> decoded_samples;
+usb_utr_t stream_transfer{};
+usb_utr_t control_transfer{};
+std::array<uint16_t, 5> control_setup{};
+std::array<uint8_t, 4> sample_rate_data{};
+uint32_t requested_bytes = 0;
 
 uint16_t configurationLength(const uint8_t* configuration)
 {
     return static_cast<uint16_t>(configuration[2]) | static_cast<uint16_t>(configuration[3]) << 8;
 }
 
-const uint8_t* findEndpoint(
-    const uint8_t* configuration, uint16_t length, const deluge::hosted_audio::InputStream& stream)
+uint8_t* findEndpoint(uint8_t* configuration, uint16_t length, const deluge::hosted_audio::InputStream& stream)
 {
-    bool inSelectedAlternate = false;
+    bool in_selected_alternate = false;
     for (uint16_t offset = 0; offset + 2 <= length;)
     {
-        uint8_t descriptorLength = configuration[offset];
-        if (descriptorLength < 2 || offset + descriptorLength > length)
+        uint8_t descriptor_length = configuration[offset];
+        if (descriptor_length < 2 || offset + descriptor_length > length)
         {
             return nullptr;
         }
-        const uint8_t* descriptor = configuration + offset;
-        if (descriptor[1] == USB_DT_INTERFACE && descriptorLength >= 9)
+        uint8_t* descriptor = configuration + offset;
+        if (descriptor[1] == USB_DT_INTERFACE && descriptor_length >= 9)
         {
-            inSelectedAlternate = descriptor[2] == stream.interfaceNumber && descriptor[3] == stream.alternateSetting;
+            in_selected_alternate = descriptor[2] == stream.interfaceNumber && descriptor[3] == stream.alternateSetting;
         }
-        else if (inSelectedAlternate && descriptor[1] == USB_DT_ENDPOINT && descriptorLength >= 7
+        else if (in_selected_alternate && descriptor[1] == USB_DT_ENDPOINT && descriptor_length >= 7
                  && descriptor[2] == stream.endpointAddress)
         {
             return descriptor;
         }
-        offset += descriptorLength;
+        offset += descriptor_length;
     }
     return nullptr;
 }
@@ -114,26 +113,30 @@ void selectStreamingInterface(usb_utr_t* ptr);
 
 void publishPacket(size_t received)
 {
-    size_t frameBytes = selectedStream->channels * selectedStream->subslotBytes;
-    if (received == 0 || received % frameBytes != 0)
+    if (!selected_stream)
+    {
+        return;
+    }
+    size_t frame_bytes = selected_stream->channels * selected_stream->subslotBytes;
+    if (received == 0 || received % frame_bytes != 0)
     {
         return;
     }
     for (size_t offset = 0; offset < received;)
     {
-        size_t bytes = std::min(received - offset, kDecodeChunkFrames * frameBytes);
+        size_t bytes = std::min(received - offset, kDecodeChunkFrames * frame_bytes);
         size_t frames =
-            deluge::hosted_audio::decodePcm({packetBuffer.data() + offset, bytes}, *selectedStream, decodedSamples);
-        deluge::usb_audio::receiveHostedInput({decodedSamples.data(), frames * 2});
+            deluge::hosted_audio::decodePcm({packet_buffer.data() + offset, bytes}, *selected_stream, decoded_samples);
+        deluge::usb_audio::receiveHostedInput({decoded_samples.data(), frames * 2});
         offset += bytes;
     }
-    receivedPackets.fetch_add(1, std::memory_order_relaxed);
-    audioStatus = USB_HOST_AUDIO_RECEIVING;
+    received_packets.fetch_add(1, std::memory_order_relaxed);
+    audio_status = USB_HOST_AUDIO_RECEIVING;
 }
 
-void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
+void packetComplete(usb_utr_t* transfer, uint16_t /*unused*/, uint16_t /*unused*/)
 {
-    if (!streaming || !selectedStream)
+    if (!streaming || !selected_stream)
     {
         return;
     }
@@ -141,14 +144,14 @@ void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     if (transfer->status != USB_DATA_READING)
     {
         // In particular, detach/forced termination must not submit another transfer to a disappearing device.
-        streaming   = false;
-        audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
+        streaming    = false;
+        audio_status = USB_HOST_AUDIO_TRANSFER_ERROR;
         deluge::usb_audio::stopHostedInput();
         return;
     }
 
-    uint32_t remaining = std::min<uint32_t>(transfer->tranlen, requestedBytes);
-    uint32_t received  = requestedBytes - remaining;
+    uint32_t remaining = std::min<uint32_t>(transfer->tranlen, requested_bytes);
+    uint32_t received  = requested_bytes - remaining;
     publishPacket(received);
 
     queuePacket();
@@ -156,48 +159,48 @@ void packetComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 
 void queuePacket()
 {
-    if (!streaming || !selectedStream)
+    if (!streaming || !selected_stream)
     {
         return;
     }
 
-    requestedBytes           = std::min<uint32_t>(selectedStream->maxPacketBytes, packetBuffer.size());
-    streamTransfer.keyword   = kAudioPipe;
-    streamTransfer.p_tranadr = packetBuffer.data();
-    streamTransfer.tranlen   = requestedBytes;
-    streamTransfer.complete  = packetComplete;
-    streamTransfer.segment   = USB_TRAN_END;
-    streamTransfer.ip        = USB_CFG_USE_USBIP;
-    streamTransfer.ipp       = usb_hstd_get_usb_ip_adr(USB_CFG_USE_USBIP);
+    requested_bytes           = std::min<uint32_t>(selected_stream->maxPacketBytes, packet_buffer.size());
+    stream_transfer.keyword   = kAudioPipe;
+    stream_transfer.p_tranadr = packet_buffer.data();
+    stream_transfer.tranlen   = requested_bytes;
+    stream_transfer.complete  = packetComplete;
+    stream_transfer.segment   = USB_TRAN_END;
+    stream_transfer.ip        = USB_CFG_USE_USBIP;
+    stream_transfer.ipp       = usb_hstd_get_usb_ip_adr(USB_CFG_USE_USBIP);
 
-    if (usb_hstd_transfer_start(&streamTransfer) != USB_OK)
+    if (usb_hstd_transfer_start(&stream_transfer) != USB_OK)
     {
-        streaming   = false;
-        audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
+        streaming    = false;
+        audio_status = USB_HOST_AUDIO_TRANSFER_ERROR;
         deluge::usb_audio::stopHostedInput();
     }
 }
 
 void startStreaming()
 {
-    if (!selectedStream || deviceAddress == USB_NODEVICE)
+    if (!selected_stream || device_address == USB_NODEVICE)
     {
         return;
     }
-    streaming   = true;
-    audioStatus = USB_HOST_AUDIO_WAITING_PACKETS;
+    streaming    = true;
+    audio_status = USB_HOST_AUDIO_WAITING_PACKETS;
     deluge::usb_audio::startHostedInput();
-    if (deviceSpeed == USB_HSCONNECT)
+    if (device_speed == USB_HSCONNECT)
     {
         // Publish the fully configured stream before enabling its interrupt. Reception must not wait for the
         // 0.5ms USB task: TONEX produces a new packet every 125us. D1FIFO is independent of control/MIDI CFIFO.
-        irqTransportOwned = true;
-        irqStreaming.store(true, std::memory_order_release);
-        if (usb_hstd_audio_transport_start(&audioContext) != USB_OK)
+        irq_transport_owned = true;
+        irq_streaming.store(true, std::memory_order_release);
+        if (usb_hstd_audio_transport_start(&audio_context) != USB_OK)
         {
-            irqStreaming.store(false, std::memory_order_release);
-            streaming   = false;
-            audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
+            irq_streaming.store(false, std::memory_order_release);
+            streaming    = false;
+            audio_status = USB_HOST_AUDIO_TRANSFER_ERROR;
             deluge::usb_audio::stopHostedInput();
         }
     }
@@ -209,21 +212,21 @@ void startStreaming()
 
 void readSampleRate(usb_utr_t* ptr);
 
-void sampleRateReadComplete(usb_utr_t* transfer, uint16_t, uint16_t)
+void sampleRateReadComplete(usb_utr_t* transfer, uint16_t /*unused*/, uint16_t /*unused*/)
 {
-    if (!selectedStream || deviceAddress == USB_NODEVICE)
+    if (!selected_stream || device_address == USB_NODEVICE)
     {
         return;
     }
-    uint32_t actualRate = static_cast<uint32_t>(sampleRateData[0]) | static_cast<uint32_t>(sampleRateData[1]) << 8
-                          | static_cast<uint32_t>(sampleRateData[2]) << 16
-                          | static_cast<uint32_t>(sampleRateData[3]) << 24;
-    if (transfer->status != USB_CTRL_END || transfer->tranlen != 0 || actualRate != selectedStream->sampleRate)
+    uint32_t actual_rate = static_cast<uint32_t>(sample_rate_data[0]) | static_cast<uint32_t>(sample_rate_data[1]) << 8
+                           | static_cast<uint32_t>(sample_rate_data[2]) << 16
+                           | static_cast<uint32_t>(sample_rate_data[3]) << 24;
+    if (transfer->status != USB_CTRL_END || transfer->tranlen != 0 || actual_rate != selected_stream->sampleRate)
     {
-        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
+        audio_status = USB_HOST_AUDIO_CLOCK_ERROR;
         return;
     }
-    if (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2)
+    if (selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2)
     {
         selectStreamingInterface(transfer);
     }
@@ -233,15 +236,15 @@ void sampleRateReadComplete(usb_utr_t* transfer, uint16_t, uint16_t)
     }
 }
 
-void sampleRateComplete(usb_utr_t* transfer, uint16_t, uint16_t)
+void sampleRateComplete(usb_utr_t* transfer, uint16_t /*unused*/, uint16_t /*unused*/)
 {
-    if (!selectedStream || deviceAddress == USB_NODEVICE)
+    if (!selected_stream || device_address == USB_NODEVICE)
     {
         return;
     }
     if (transfer->status != USB_CTRL_END)
     {
-        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
+        audio_status = USB_HOST_AUDIO_CLOCK_ERROR;
         return;
     }
     readSampleRate(transfer);
@@ -249,75 +252,83 @@ void sampleRateComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 
 void readSampleRate(usb_utr_t* ptr)
 {
-    bool uac2 = selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2;
-    sampleRateData.fill(0);
-    controlSetup[0] = (uac2 ? 0x0100u : 0x8100u) | USB_DEV_TO_HOST | USB_CLASS | (uac2 ? USB_INTERFACE : USB_ENDPOINT);
-    controlSetup[1] = 0x0100u;
-    controlSetup[2] =
-        uac2 ? static_cast<uint16_t>(selectedStream->clockSourceId << 8 | selectedStream->controlInterfaceNumber)
-             : selectedStream->endpointAddress;
-    controlSetup[3]           = uac2 ? 4 : 3;
-    controlSetup[4]           = deviceAddress;
-    controlTransfer.p_tranadr = sampleRateData.data();
-    controlTransfer.complete  = sampleRateReadComplete;
-    controlTransfer.tranlen   = controlSetup[3];
-    controlTransfer.keyword   = USB_PIPE0;
-    controlTransfer.p_setup   = controlSetup;
-    controlTransfer.segment   = USB_TRAN_END;
-    controlTransfer.ip        = ptr->ip;
-    controlTransfer.ipp       = ptr->ipp;
-    if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
+    if (!selected_stream)
     {
-        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
+        return;
+    }
+    bool uac2 = selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2;
+    sample_rate_data.fill(0);
+    control_setup[0] = (uac2 ? 0x0100u : 0x8100u) | USB_DEV_TO_HOST | USB_CLASS | (uac2 ? USB_INTERFACE : USB_ENDPOINT);
+    control_setup[1] = 0x0100u;
+    control_setup[2] =
+        uac2 ? static_cast<uint16_t>(selected_stream->clockSourceId << 8 | selected_stream->controlInterfaceNumber)
+             : selected_stream->endpointAddress;
+    control_setup[3]           = uac2 ? 4 : 3;
+    control_setup[4]           = device_address;
+    control_transfer.p_tranadr = sample_rate_data.data();
+    control_transfer.complete  = sampleRateReadComplete;
+    control_transfer.tranlen   = control_setup[3];
+    control_transfer.keyword   = USB_PIPE0;
+    control_transfer.p_setup   = control_setup.data();
+    control_transfer.segment   = USB_TRAN_END;
+    control_transfer.ip        = ptr->ip;
+    control_transfer.ipp       = ptr->ipp;
+    if (usb_hstd_transfer_start(&control_transfer) != USB_OK)
+    {
+        audio_status = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
 
 void setSampleRate(usb_utr_t* ptr)
 {
-    uint32_t rate     = selectedStream->sampleRate;
-    sampleRateData[0] = rate;
-    sampleRateData[1] = rate >> 8;
-    sampleRateData[2] = rate >> 16;
-    sampleRateData[3] = rate >> 24;
-
-    controlSetup[0] =
-        0x0100u | USB_HOST_TO_DEV | USB_CLASS
-        | (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2 ? USB_INTERFACE : USB_ENDPOINT);
-    controlSetup[1] = 0x0100u; // SAM_FREQ_CONTROL
-    controlSetup[2] =
-        selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2
-            ? static_cast<uint16_t>(selectedStream->clockSourceId << 8 | selectedStream->controlInterfaceNumber)
-            : selectedStream->endpointAddress;
-    controlSetup[3] = selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2 ? 4 : 3;
-    controlSetup[4] = deviceAddress;
-
-    controlTransfer.p_tranadr = sampleRateData.data();
-    controlTransfer.complete  = sampleRateComplete;
-    controlTransfer.tranlen   = controlSetup[3];
-    controlTransfer.keyword   = USB_PIPE0;
-    controlTransfer.p_setup   = controlSetup;
-    controlTransfer.segment   = USB_TRAN_END;
-    controlTransfer.ip        = ptr->ip;
-    controlTransfer.ipp       = ptr->ipp;
-    if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
+    if (!selected_stream)
     {
-        audioStatus = USB_HOST_AUDIO_CLOCK_ERROR;
+        return;
+    }
+    uint32_t rate       = selected_stream->sampleRate;
+    sample_rate_data[0] = rate;
+    sample_rate_data[1] = rate >> 8;
+    sample_rate_data[2] = rate >> 16;
+    sample_rate_data[3] = rate >> 24;
+
+    control_setup[0] =
+        0x0100u | USB_HOST_TO_DEV | USB_CLASS
+        | (selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2 ? USB_INTERFACE : USB_ENDPOINT);
+    control_setup[1] = 0x0100u; // SAM_FREQ_CONTROL
+    control_setup[2] =
+        selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2
+            ? static_cast<uint16_t>(selected_stream->clockSourceId << 8 | selected_stream->controlInterfaceNumber)
+            : selected_stream->endpointAddress;
+    control_setup[3] = selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2 ? 4 : 3;
+    control_setup[4] = device_address;
+
+    control_transfer.p_tranadr = sample_rate_data.data();
+    control_transfer.complete  = sampleRateComplete;
+    control_transfer.tranlen   = control_setup[3];
+    control_transfer.keyword   = USB_PIPE0;
+    control_transfer.p_setup   = control_setup.data();
+    control_transfer.segment   = USB_TRAN_END;
+    control_transfer.ip        = ptr->ip;
+    control_transfer.ipp       = ptr->ipp;
+    if (usb_hstd_transfer_start(&control_transfer) != USB_OK)
+    {
+        audio_status = USB_HOST_AUDIO_CLOCK_ERROR;
     }
 }
 
-void setInterfaceComplete(usb_utr_t* transfer, uint16_t, uint16_t)
+void setInterfaceComplete(usb_utr_t* transfer, uint16_t /*unused*/, uint16_t /*unused*/)
 {
-    if (!selectedStream || deviceAddress == USB_NODEVICE)
+    if (!selected_stream || device_address == USB_NODEVICE)
     {
         return;
     }
     if (transfer->status != USB_CTRL_END)
     {
-        audioStatus = USB_HOST_AUDIO_INTERFACE_ERROR;
+        audio_status = USB_HOST_AUDIO_INTERFACE_ERROR;
         return;
     }
-    if (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC1
-        && selectedStream->sampleRateNeedsControlRequest)
+    if (selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC1
+        && selected_stream->sampleRateNeedsControlRequest)
     {
         setSampleRate(transfer);
         return;
@@ -327,99 +338,107 @@ void setInterfaceComplete(usb_utr_t* transfer, uint16_t, uint16_t)
 
 void selectStreamingInterface(usb_utr_t* ptr)
 {
-    controlSetup[0] = USB_SET_INTERFACE | USB_HOST_TO_DEV | USB_STANDARD | USB_INTERFACE;
-    controlSetup[1] = selectedStream->alternateSetting;
-    controlSetup[2] = selectedStream->interfaceNumber;
-    controlSetup[3] = 0;
-    controlSetup[4] = deviceAddress;
-
-    controlTransfer.p_tranadr = nullptr;
-    controlTransfer.complete  = setInterfaceComplete;
-    controlTransfer.tranlen   = 0;
-    controlTransfer.keyword   = USB_PIPE0;
-    controlTransfer.p_setup   = controlSetup;
-    controlTransfer.segment   = USB_TRAN_END;
-    controlTransfer.ip        = ptr->ip;
-    controlTransfer.ipp       = ptr->ipp;
-    if (usb_hstd_transfer_start(&controlTransfer) != USB_OK)
+    if (!selected_stream)
     {
-        audioStatus = USB_HOST_AUDIO_INTERFACE_ERROR;
+        return;
+    }
+    control_setup[0] = USB_SET_INTERFACE | USB_HOST_TO_DEV | USB_STANDARD | USB_INTERFACE;
+    control_setup[1] = selected_stream->alternateSetting;
+    control_setup[2] = selected_stream->interfaceNumber;
+    control_setup[3] = 0;
+    control_setup[4] = device_address;
+
+    control_transfer.p_tranadr = nullptr;
+    control_transfer.complete  = setInterfaceComplete;
+    control_transfer.tranlen   = 0;
+    control_transfer.keyword   = USB_PIPE0;
+    control_transfer.p_setup   = control_setup.data();
+    control_transfer.segment   = USB_TRAN_END;
+    control_transfer.ip        = ptr->ip;
+    control_transfer.ipp       = ptr->ipp;
+    if (usb_hstd_transfer_start(&control_transfer) != USB_OK)
+    {
+        audio_status = USB_HOST_AUDIO_INTERFACE_ERROR;
     }
 }
 
 void classCheck(usb_utr_t* ptr, uint16_t** table)
 {
     *table[3] = USB_ERROR;
-    if (deviceAddress != USB_NODEVICE)
+    if (device_address != USB_NODEVICE)
     {
         return; // Do not overwrite the status of an already selected device.
     }
-    audioStatus     = USB_HOST_AUDIO_UNSUPPORTED;
-    receivedPackets = 0;
+    audio_status     = USB_HOST_AUDIO_UNSUPPORTED;
+    received_packets = 0;
     if (*table[6] != USB_FSCONNECT && *table[6] != USB_HSCONNECT)
     {
         return;
     }
-    if (g_usb_hstd_use_pipe[ptr->ip] & USB_BITSET(kAudioPipe))
+    if ((g_usb_hstd_use_pipe[ptr->ip] & USB_BITSET(kAudioPipe)) != 0)
     {
-        audioStatus = USB_HOST_AUDIO_PIPE_IN_USE;
+        audio_status = USB_HOST_AUDIO_PIPE_IN_USE;
         return;
     }
+    // Renesas passes descriptor bytes as uint16_t*.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     auto* configuration = reinterpret_cast<uint8_t*>(table[1]);
     if (configurationLength(configuration) > USB_CONFIGSIZE)
     {
-        audioStatus = USB_HOST_AUDIO_CONFIG_TOO_LARGE;
+        audio_status = USB_HOST_AUDIO_CONFIG_TOO_LARGE;
         return;
     }
-    auto* controlInterface = reinterpret_cast<uint8_t*>(table[2]);
-    uint16_t length        = std::min<uint16_t>(configurationLength(configuration), USB_CONFIGSIZE);
-    selectedStream         = deluge::hosted_audio::findInputStream({configuration, length},
-                deluge::hosted_audio::kDelugeSampleRate, controlInterface[2],
-        *table[6] == USB_HSCONNECT ? deluge::hosted_audio::BusSpeed::High : deluge::hosted_audio::BusSpeed::Full);
-    if (!selectedStream || selectedStream->maxPacketBytes > kMaxPacketBytes)
+    // Renesas passes descriptor bytes as uint16_t*.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    auto* control_interface = reinterpret_cast<uint8_t*>(table[2]);
+    uint16_t length         = std::min<uint16_t>(configurationLength(configuration), USB_CONFIGSIZE);
+    selected_stream         = deluge::hosted_audio::findInputStream({configuration, length},
+                deluge::hosted_audio::kDelugeSampleRate, control_interface[2],
+        *table[6] == USB_HSCONNECT ? deluge::hosted_audio::BusSpeed::HIGH : deluge::hosted_audio::BusSpeed::FULL);
+    if (!selected_stream || selected_stream->maxPacketBytes > kMaxPacketBytes)
     {
         *table[3] = USB_ERROR;
         return;
     }
 
-    const uint8_t* endpoint = findEndpoint(configuration, length, *selectedStream);
-    if (!endpoint)
+    auto* const endpoint = findEndpoint(configuration, length, *selected_stream);
+    if (endpoint == nullptr)
     {
         *table[3] = USB_ERROR;
         return;
     }
 
-    deviceSpeed  = *table[6];
-    pipeTable[1] = deviceSpeed == USB_HSCONNECT ? USB_DBLBFIELD : USB_NULL;
-    pipeTable[2] = static_cast<uint16_t>(USB_BUF_SIZE(1024u) | USB_BUF_NUMB(kAudioBufferNumber));
-    pipeTable[3] = USB_NULL;
-    pipeTable[4] = USB_NULL;
-    if (usb_hstd_chk_pipe_info(deviceSpeed, pipeTable, const_cast<uint8_t*>(endpoint)) == USB_ERROR)
+    device_speed  = *table[6];
+    pipe_table[1] = device_speed == USB_HSCONNECT ? USB_DBLBFIELD : USB_NULL;
+    pipe_table[2] = static_cast<uint16_t>(USB_BUF_SIZE(1024u) | USB_BUF_NUMB(kAudioBufferNumber));
+    pipe_table[3] = USB_NULL;
+    pipe_table[4] = USB_NULL;
+    if (usb_hstd_chk_pipe_info(device_speed, pipe_table.data(), endpoint) == USB_ERROR)
     {
-        selectedStream.reset();
+        selected_stream.reset();
         *table[3] = USB_ERROR;
         return;
     }
 
-    deviceAddress = *table[7];
-    audioStatus   = USB_HOST_AUDIO_CONFIGURING;
-    *table[3]     = USB_OK;
+    device_address = *table[7];
+    audio_status   = USB_HOST_AUDIO_CONFIGURING;
+    *table[3]      = USB_OK;
     usb_hstd_return_enu_mgr(ptr, USB_OK);
 }
 
-void configured(usb_utr_t* ptr, uint16_t devaddr, uint16_t)
+void configured(usb_utr_t* ptr, uint16_t devaddr, uint16_t /*unused*/)
 {
-    if (!selectedStream || devaddr != deviceAddress)
+    if (!selected_stream || devaddr != device_address)
     {
         return;
     }
-    audioContext.ip  = ptr->ip;
-    audioContext.ipp = ptr->ipp;
-    pipeTable[3] |= static_cast<uint16_t>(devaddr << USB_DEVADDRBIT);
-    usb_hstd_set_pipe_registration(ptr, pipeTable, USB_USEPIPE);
-    if (selectedStream->version == deluge::hosted_audio::AudioClassVersion::UAC2)
+    audio_context.ip  = ptr->ip;
+    audio_context.ipp = ptr->ipp;
+    pipe_table[3] |= static_cast<uint16_t>(devaddr << USB_DEVADDRBIT);
+    usb_hstd_set_pipe_registration(ptr, pipe_table.data(), USB_USEPIPE);
+    if (selected_stream->version == deluge::hosted_audio::AudioClassVersion::UAC2)
     {
-        if (selectedStream->clockFrequencyControls == 3)
+        if (selected_stream->clockFrequencyControls == 3)
         {
             setSampleRate(ptr);
         }
@@ -434,9 +453,9 @@ void configured(usb_utr_t* ptr, uint16_t devaddr, uint16_t)
     }
 }
 
-void detached(usb_utr_t*, uint16_t devaddr, uint16_t)
+void detached(usb_utr_t* /*unused*/, uint16_t devaddr, uint16_t /*unused*/)
 {
-    if (devaddr != deviceAddress)
+    if (devaddr != device_address)
     {
         return;
     }
@@ -456,8 +475,8 @@ extern "C" void usb_hstd_audio_register(usb_utr_t* ptr)
     driver.ifclass    = USB_IFCLS_AUD;
     driver.ifsubclass = 0x01; // AudioControl; the parser then selects an AudioStreaming interface.
     driver.ifprotocol = USB_IFPROTO_ANY;
-    driver.p_tpl      = const_cast<uint16_t*>(targetPeripheralList);
-    driver.p_pipetbl  = pipeTable;
+    driver.p_tpl      = target_peripheral_list.data();
+    driver.p_pipetbl  = pipe_table.data();
     driver.classinit  = usb_hstd_dummy_function;
     driver.classcheck = classCheck;
     driver.devconfig  = configured;
@@ -469,27 +488,27 @@ extern "C" void usb_hstd_audio_register(usb_utr_t* ptr)
 
 extern "C" void usb_hstd_audio_stop(void)
 {
-    irqStreaming.store(false, std::memory_order_release);
-    if (irqTransportOwned)
+    irq_streaming.store(false, std::memory_order_release);
+    if (irq_transport_owned)
     {
-        usb_hstd_audio_transport_stop(&audioContext);
-        irqTransportOwned = false;
+        usb_hstd_audio_transport_stop(&audio_context);
+        irq_transport_owned = false;
     }
-    streaming       = false;
-    audioStatus     = USB_HOST_AUDIO_IDLE;
-    receivedPackets = 0;
+    streaming        = false;
+    audio_status     = USB_HOST_AUDIO_IDLE;
+    received_packets = 0;
 #if ENABLE_TEXT_OUTPUT
-    maxIrqTicks.store(0, std::memory_order_relaxed);
+    max_irq_ticks.store(0, std::memory_order_relaxed);
 #endif
     deluge::usb_audio::stopHostedInput();
-    selectedStream.reset();
-    deviceAddress = USB_NODEVICE;
-    deviceSpeed   = USB_NOCONNECT;
+    selected_stream.reset();
+    device_address = USB_NODEVICE;
+    device_speed   = USB_NOCONNECT;
 }
 
 extern "C" void usb_hstd_audio_detach_device(uint16_t address)
 {
-    if (address == deviceAddress)
+    if (address == device_address)
     {
         usb_hstd_audio_stop();
     }
@@ -497,7 +516,7 @@ extern "C" void usb_hstd_audio_detach_device(uint16_t address)
 
 extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
 {
-    if (!(bits & USB_BITSET(kAudioPipe)) || !irqStreaming.load(std::memory_order_acquire))
+    if (((bits & USB_BITSET(kAudioPipe)) == 0) || !irq_streaming.load(std::memory_order_acquire) || !selected_stream)
     {
         return 0;
     }
@@ -507,16 +526,16 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
     // Drain at most both FIFO planes per interrupt. No allocation, task messages, PIPESEL or CFIFO access here.
     for (unsigned packet = 0; packet < 2; ++packet)
     {
-        int32_t received = usb_hstd_audio_transport_read(ptr, packetBuffer.data(), selectedStream->maxPacketBytes);
+        int32_t received = usb_hstd_audio_transport_read(ptr, packet_buffer.data(), selected_stream->maxPacketBytes);
         if (received == -1)
         {
             break;
         }
         if (received < 0)
         {
-            irqStreaming.store(false, std::memory_order_release);
+            irq_streaming.store(false, std::memory_order_release);
             usb_hstd_audio_transport_stop(ptr);
-            audioStatus = USB_HOST_AUDIO_TRANSFER_ERROR;
+            audio_status = USB_HOST_AUDIO_TRANSFER_ERROR;
             deluge::usb_audio::stopHostedInput();
             break;
         }
@@ -524,9 +543,9 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
     }
 #if ENABLE_TEXT_OUTPUT
     uint16_t elapsed = static_cast<uint16_t>(*TCNT[TIMER_SYSTEM_FAST] - started);
-    if (elapsed > maxIrqTicks.load(std::memory_order_relaxed))
+    if (elapsed > max_irq_ticks.load(std::memory_order_relaxed))
     {
-        maxIrqTicks.store(elapsed, std::memory_order_relaxed);
+        max_irq_ticks.store(elapsed, std::memory_order_relaxed);
     }
 #endif
     return USB_BITSET(kAudioPipe);
@@ -535,15 +554,15 @@ extern "C" uint16_t usb_hstd_audio_handle_brdy(usb_utr_t* ptr, uint16_t bits)
 #if ENABLE_TEXT_OUTPUT
 extern "C" uint32_t usb_hstd_audio_max_irq_ticks(void)
 {
-    return maxIrqTicks.load(std::memory_order_relaxed);
+    return max_irq_ticks.load(std::memory_order_relaxed);
 }
 #endif
 
 extern "C" usb_host_audio_status_t usb_hstd_audio_status(void)
 {
-    return audioStatus;
+    return audio_status;
 }
 extern "C" uint32_t usb_hstd_audio_packet_count(void)
 {
-    return receivedPackets;
+    return received_packets;
 }
