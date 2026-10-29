@@ -27,6 +27,7 @@
 #include "io/midi/midi_transpose.h"
 #include "model/action/action_logger.h"
 #include "model/clip/instrument_clip.h"
+#include "model/song/clip_iterators.h"
 #include "model/song/song.h"
 #include "modulation/arpeggiator.h"
 #include "modulation/midi/midi_param.h"
@@ -777,7 +778,10 @@ int32_t MIDIInstrument::getFirstUnusedCC(ModelStackWithThreeMainThings* modelSta
 	do {
 		ModelStackWithAutoParam* modelStackWithAutoParam =
 		    getParamToControlFromInputMIDIChannel(proposedCC, modelStack);
-		if (!modelStackWithAutoParam->autoParam || !modelStackWithAutoParam->autoParam->isAutomated()) {
+		if (!modelStackWithAutoParam->autoParam) {
+			return -1;
+		}
+		if (!modelStackWithAutoParam->autoParam->isAutomated()) {
 			return proposedCC;
 		}
 
@@ -847,14 +851,40 @@ int32_t MIDIInstrument::moveAutomationToDifferentCC(int32_t offset, int32_t whic
 		return *cc;
 	}
 
-	// Find a CC that's not automated in this Clip and move this Clip's automation there. Other Clips using this
-	// Instrument keep their automation where it is.
-	int32_t newCC = getFirstUnusedCC(modelStack, offset, getNextSelectableCC(*cc, offset), *cc);
-	if (newCC == -1) {
-		return -1;
-	}
+	int32_t newCC = getNextSelectableCC(*cc, offset);
+	bool checkedAllClips;
+	do {
+		checkedAllClips = true;
+		for (InstrumentClip* clip : InstrumentClips::everywhere(modelStack->song)) {
+			if (clip->output != this) {
+				continue;
+			}
 
-	moveAutomationToDifferentCC(*cc, newCC, modelStack);
+			char clipModelStackMemory[MODEL_STACK_MAX_SIZE];
+			ModelStackWithThreeMainThings* clipModelStack = setupModelStackWithThreeMainThingsButNoNoteRow(
+			    clipModelStackMemory, modelStack->song, this, clip, &clip->paramManager);
+			int32_t unusedCC = getFirstUnusedCC(clipModelStack, offset, newCC, *cc);
+			if (unusedCC == -1) {
+				return -1;
+			}
+			if (unusedCC != newCC) {
+				newCC = unusedCC;
+				checkedAllClips = false;
+				break;
+			}
+		}
+	} while (!checkedAllClips);
+
+	for (InstrumentClip* clip : InstrumentClips::everywhere(modelStack->song)) {
+		if (clip->output != this) {
+			continue;
+		}
+
+		char clipModelStackMemory[MODEL_STACK_MAX_SIZE];
+		ModelStackWithThreeMainThings* clipModelStack = setupModelStackWithThreeMainThingsButNoNoteRow(
+		    clipModelStackMemory, modelStack->song, this, clip, &clip->paramManager);
+		moveAutomationToDifferentCC(*cc, newCC, clipModelStack);
+	}
 
 	*cc = newCC;
 	editedByUser = true;
