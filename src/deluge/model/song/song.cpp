@@ -1673,7 +1673,8 @@ unknownTag:
 			}
 
 			else if (!strcmp(tagName, "inputTickMagnitude")) {
-				insideWorldTickMagnitude = reader.readTagOrAttributeValueInt();
+				// Keep timing helpers nonzero and shift amounts defined.
+				insideWorldTickMagnitude = std::clamp(reader.readTagOrAttributeValueInt(), (int32_t)-4, (int32_t)16);
 				reader.exitTag("inputTickMagnitude");
 			}
 
@@ -2115,6 +2116,9 @@ loadOutput:
 		swingInterval = convertSyncLevelFromFileValueToInternalValue(swingInterval);
 	}
 	swingInterval = std::min(swingInterval, (uint8_t)9);
+
+	// Re-clamp in case older paths left an out-of-range value before timebase setup
+	insideWorldTickMagnitude = std::clamp(insideWorldTickMagnitude, (int32_t)-4, (int32_t)16);
 
 	setTimePerTimerTick(newTimePerTimerTick);
 
