@@ -191,7 +191,8 @@ void wait_for_flush(void) {
 	// Search for stack pointers before any printing
 	if (stackPointer != 0x00000000) {
 		stackPointer = stackPointer - (stackPointer % 4); // Align to 4 bytes
-		while (stackPointer <= (uint32_t)&program_stack_end) {
+		// program_stack_end is exclusive — scan strictly below it
+		while (stackPointer < (uint32_t)&program_stack_end) {
 			uint32_t stackValue = *((uint32_t*)stackPointer);
 
 			// Print any pointer that is pointing to code, different from the LRs and not the same as before
