@@ -27,14 +27,12 @@ public:
 	}
 	void drawPixelsForOled() override {
 		auto& canvas = hid::display::OLED::main;
-#if ENABLE_TEXT_OUTPUT
 		canvas.drawStringCentredShrinkIfNecessary(statusText(), 22, 18, 20);
+#if ENABLE_TEXT_OUTPUT
 		char count[32];
 		snprintf(count, sizeof(count), "%s: %lu", l10n::get(l10n::String::STRING_FOR_USB_PACKETS),
 		         static_cast<unsigned long>(usb_hstd_audio_packet_count()));
 		canvas.drawStringCentredShrinkIfNecessary(count, 42, 12, 12);
-#else
-		canvas.drawStringCentredShrinkIfNecessary(statusText(), 28, 18, 20);
 #endif
 	}
 
