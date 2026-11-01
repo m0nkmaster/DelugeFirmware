@@ -1,6 +1,6 @@
 # USB audio and runtime USB roles: project handover
 
-Last updated: 2026-10-27. Keep this file current when changing this feature or recording a hardware result.
+Last updated: 2026-11-01. Keep this file current when changing this feature or recording a hardware result.
 
 ## Start here
 
@@ -18,9 +18,10 @@ Target: **m0nkmaster/DelugeFirmware:main**, not Synthstrom's repository or the f
 The user explicitly requested work and a PR in their personal fork. Upstream contribution instructions prohibit agents
 opening upstream PRs; there is no authorization to submit this to upstream.
 
-The branch starts at fork `main` commit `a246bb9abf544d30dae7981c6bcccb2047b277af`. It does not include six additional
-commits on the local `main`, or the separate `fix/critical-high-crash-risks` branch. Do not promise it includes every
-unmerged change in this checkout. Check `git status`, `git log`, and the PR base before continuing.
+The branch was rebased onto upstream `main` at `00c0b3b7609e5ffa1f33493d99b646637d853845` on 2026-11-01.
+The seven feature commits replayed without conflicts or patch changes. The subsequent commit `19640530c` moves OLED
+status text up six pixels. Check `git status`, `git log`, and the PR base before continuing; local commits may not
+have been pushed.
 
 ## What is implemented
 
@@ -31,7 +32,7 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
 | Host enumeration / capture | `src/RZA1/usb/r_usb_haudio/r_usb_haudio.cpp`: class registration, sample-clock requests, alternate-setting selection, capture state and status. |
 | High-speed FIFO transport | `r_usb_haudio_transport.{h,c}` in the same directory: continuous PIPE2 reception through D1FIFO, serviced directly by the USB ISR. |
 | Runtime role switching | `src/deluge/drivers/usb/usb_mode.{h,cpp}` and `src/RZA1/usb/USBConnection.c`: queued host/peripheral changes, teardown and controller reopening. |
-| Menus / status | `src/deluge/gui/menu_item/usb/{audio.h,host_status.h}` and `runtime_feature/settings.cpp`: host toggle and read-only status in Community Features. |
+| Menus / status | `src/deluge/gui/menu_item/usb/{audio.h,host_status.h}` and `runtime_feature/settings.cpp`: Mode/Status/audio controls under Settings > USB; host-audio capability toggle under Community Features. |
 | User instructions | `website/src/content/docs/features/usb_audio.mdx`. |
 | Tests / captures | `tests/unit/{hosted_audio_tests.cpp,usb_host_driver_tests.cpp,fixtures/tonex_usb_descriptors.h}`. |
 
@@ -42,9 +43,19 @@ unmerged change in this checkout. Check `git status`, `git log`, and the PR base
   select the TONEX capture source.
 - `SETTINGS > USB > MODE` selects `COMPUTER` (`COMP`) or `HOST`, affecting MIDI and audio. The next boot uses
   normal startup role detection; the role is not persisted. `USB > STATUS` (`STAT`) reports the mode or host-audio state.
+- Automatic role detection runs at startup only (`deluge.cpp`): try Host, then fall back to Computer if
+  `anythingInitiallyAttachedAsUSBHost` is false. There is no automatic runtime role switching. The Mode selector
+  supports attaching a device after an empty boot or changing between a computer and a device without rebooting.
+- The USB menu, Mode selector, Status screen and renamed audio controls remain visible when host audio is disabled.
+  Mode also applies to MIDI hosting. Disabling audio capture does not select a role or restore upstream's menu layout.
 - `COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) is the separate persisted capability, XML key `usbHostAudio`.
   It defaults on to preserve existing branch behavior. Off skips audio driver registration, leaving MIDI hosting available.
   A change queues host reinitialization without changing the requested role; computer connections are left alone.
+- With host audio on, separate USB MIDI devices remain supported. A composite audio/MIDI device claimed by the
+  audio driver cannot simultaneously use its MIDI function; off leaves it available to the MIDI driver. Separate
+  MIDI/audio devices through a hub are intended to coexist, but real hardware verification is outstanding.
+  OP-XY is an example of a combined device, not a tested audio source. Computer-mode audio plus MIDI is unaffected.
+- Disabling host audio skips audio-class registration; shared high-speed and MIDI stack changes remain in place.
 - Role changes interrupt the current USB audio/MIDI connection but do not restart the song or the Deluge.
 - On a computer connection, disconnect the computer before asking the Deluge to become host. The guard uses VBUS
   **and peripheral enumeration state** as evidence of an external host; voltage alone cannot identify its source.

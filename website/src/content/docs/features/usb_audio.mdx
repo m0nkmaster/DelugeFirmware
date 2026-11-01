@@ -13,6 +13,10 @@ as a class-compliant audio device alongside its existing USB MIDI ports, so no d
 - record the Deluge's output into your computer
 - record and monitor audio from your computer in an audio clip, just like the line input
 
+This branch also supports experimental [USB host input](#experimental-usb-host-input): the Deluge can receive audio
+from an attached device such as a TONEX, without a computer. `COMPUTER AUDIO` controls audio with a computer;
+`COMMUNITY FEATURES > USB HOST AUDIO` controls capture from attached audio devices.
+
 ## Format
 
 |             | From computer to Deluge | From Deluge to computer |
@@ -42,7 +46,10 @@ The Deluge's USB MIDI ports keep working as before.
 
 ## Settings
 
-USB settings are in `SETTINGS > USB` (`USB` on 7SEG):
+USB settings are in `SETTINGS > USB` (`USB` on 7SEG). Compared with upstream main, this branch moves the existing
+`USB AUDIO` menu inside `USB`, adds `MODE` and `STATUS`, and renames the audio controls:
+`ENABLED` becomes `COMPUTER AUDIO`, `INPUT` becomes `DIRECT MONITORING`, and `OUTPUT` becomes `SEND TO COMPUTER`.
+These menus remain visible with `USB HOST AUDIO` off.
 
 | Setting | 7SEG | Purpose |
 | --- | --- | --- |
@@ -66,16 +73,51 @@ Inside `SETTINGS > USB > USB AUDIO`:
 | `DIRECT MONITORING` | `MONI` | On (default), off: hear incoming USB audio directly through the outputs. |
 | `SEND TO COMPUTER` | `SEND` | `MAIN MIX` (default, `MIX`) or `LINE IN` (`LINE`). Does not send audio to a hosted device. |
 
-`SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) enables experimental capture from hosted audio devices.
-It is saved with the community preferences and defaults to on to preserve this branch's existing behavior. Turning it
-off leaves USB MIDI hosting available, including the MIDI function of combined audio/MIDI devices. Changing it while
-hosting reconnects the USB devices; changing it in computer mode does not interrupt the computer connection or switch
-roles. This preference does not restore the old USB stack or remove the shared high-speed/MIDI changes.
+### Automatic detection and the Mode selector
 
-## Turning USB audio off
+**The Deluge automatically chooses its USB role at startup only.** It first checks for an attached device to host.
+If none is detected, it switches to Computer mode. Plugging in a device later does not automatically change that role.
 
-USB audio is on by default. To turn it off, set `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` to off. The Deluge then connects to
-your computer as a USB MIDI device only, exactly as it did before USB audio was added.
+- With your audio device connected at power-on and detected during startup, Host mode is selected automatically.
+- If you start with nothing attached and connect a TONEX later, select `MODE > HOST` to use it without rebooting.
+- To move from hosting a device to a computer connection, disconnect the device, select `MODE > COMPUTER`, then
+  connect the computer. To go back, disconnect the computer before selecting Host.
+
+`MODE` applies to both MIDI and audio. It remains useful with `USB HOST AUDIO` off for switching to a USB MIDI
+controller without rebooting. Changing the host-audio toggle does not select Host mode for you.
+
+### What USB Host Audio enables
+
+`SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD`) controls whether the Deluge can recognise and capture
+compatible audio devices **while in Host mode**. It is saved with the community preferences and defaults to on in
+this experimental branch.
+
+| USB Host Audio | USB MIDI devices | Compatible USB audio devices |
+| --- | --- | --- |
+| Off | MIDI hosting remains available. | Audio capture is disabled. |
+| On | MIDI hosting remains available; see the combined-device limitation below. | Audio can be monitored and recorded through `USB INPUT`. |
+
+Changing this setting while hosting reconnects the attached USB devices and briefly interrupts their MIDI/audio.
+It leaves computer-mode audio and MIDI unaffected. `COMPUTER AUDIO` is the separate setting for audio with a computer.
+The menu layout stays the same whichever position the toggle is in.
+
+### Devices that carry both audio and MIDI
+
+Some instruments and interfaces carry both audio and MIDI through one USB cable, such as the
+[Teenage Engineering OP-XY](https://teenage.engineering/products/op-xy). These are often called composite devices.
+**This branch cannot currently capture audio and use USB MIDI from the same attached device simultaneously.**
+With `USB HOST AUDIO` on, the audio driver takes priority for devices it claims. Turn it off to make the device
+available to the MIDI driver. This limitation applies when the Deluge is hosting; audio and MIDI together still work
+when the Deluge is connected to a computer.
+
+Separate MIDI and audio devices through a hub are intended to coexist, but that setup still needs hardware testing.
+The OP-XY is an example of a combined device, not a confirmed compatible audio source for this branch. Audio operation
+has been reported working with TONEX ONE and TONEX Plug; other devices need testing.
+
+## Turning computer audio off
+
+Computer audio is on by default. To turn it off, set `SETTINGS > USB > USB AUDIO > COMPUTER AUDIO` to off. The Deluge then connects to
+your computer as a USB MIDI device only. This setting does not disable capture from a hosted audio device.
 
 The setting takes effect the next time the Deluge is turned on, since your computer only finds out what kind of
 device the Deluge is when it first connects.
@@ -152,15 +194,12 @@ Deluge. This is separate from using the Deluge as your computer's audio interfac
 1. Power the Deluge from its DC supply and disconnect any computer from its USB port.
 2. Connect the audio device using the Deluge's USB host adapter and a USB data cable.
 3. Enable `SETTINGS > COMMUNITY FEATURES > USB HOST AUDIO` (`HAUD` on 7SEG).
-4. Select `SETTINGS > USB > MODE > HOST` (`USB > MODE > HOST` on 7SEG).
+4. Check `SETTINGS > USB > MODE` (`USB > MODE` on 7SEG). Select `HOST` if startup detection has not already done so.
 5. Choose `USB INPUT` as the audio clip's source and use `SAMPLER` or `LOOPER` to monitor it.
 
-The mode selection takes effect without restarting the Deluge, once the current USB operation finishes. It reconnects
-the USB session, interrupting any USB MIDI or audio in progress. It is a session-only selection: the next boot uses the
-normal USB role detection. The mode selector refuses host mode when peripheral enumeration by another host is detected.
-USB voltage alone cannot identify where power comes from, and the firmware cannot reliably detect whether the DC
-supply is connected. Connect DC and disconnect any computer before enabling host mode. The role switch does not
-control the hardware's USB power output.
+Changing Mode reconnects USB without restarting the Deluge or song. The selection lasts for this session;
+the next boot uses startup detection again. Connect DC power and disconnect any computer before selecting Host.
+The Deluge shows a DC-power reminder but cannot check whether the supply is connected.
 
 The mode reports the USB role, not whether an audio device is streaming. Open
 `SETTINGS > USB > STATUS` (`USB > STAT` on 7SEG) to check capture startup. With the community capability disabled,
@@ -174,7 +213,8 @@ negotiates the device's bus speed. High-speed capture uses interrupt-driven rece
 full-speed capture uses 1-millisecond packets. Only `bInterval=1` and one transaction per interval are supported.
 UAC2 requires a terminal connected directly to a readable clock source; clock selectors and multipliers are not supported. Mono
 is duplicated to stereo; for larger streams, the first two channels are used. Sending audio back to the device,
-sample-rate conversion, and simultaneous MIDI on the same composite audio device are not supported.
+sample-rate conversion, and [simultaneous USB MIDI on the same audio device](#devices-that-carry-both-audio-and-midi)
+are not supported.
 
 <Aside type="caution">
   USB audio operation with TONEX ONE and TONEX Plug has been reported working by the user who tested this branch.
