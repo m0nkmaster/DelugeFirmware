@@ -58,9 +58,13 @@ bool ScaleMapper::computeChangeFrom(NoteSet notes, NoteSet sourceScale, NoteSet 
 
 NoteSet ScaleMapper::initialTransitionScale(NoteSet sourceScale) {
 	uint8_t size = sourceScale.count();
-	NoteSet mode = transitionScaleStore[size];
+	if (size < 1 || size > kMaxScaleSize) {
+		return sourceScale;
+	}
+	uint8_t index = size - 1;
+	NoteSet mode = transitionScaleStore[index];
 	if (mode.isEmpty()) {
-		mode = transitionScaleStore[size] = sourceScale;
+		mode = transitionScaleStore[index] = sourceScale;
 	}
 	return mode;
 }
@@ -83,7 +87,10 @@ void ScaleMapper::flushTransitionScaleStore(NoteSet initialScale) {
 	for (int i = 0; i < kMaxScaleSize; i++) {
 		transitionScaleStore[i].clear();
 	}
-	transitionScaleStore[initialScale.count()] = initialScale;
+	uint8_t size = initialScale.count();
+	if (size >= 1 && size <= kMaxScaleSize) {
+		transitionScaleStore[size - 1] = initialScale;
+	}
 }
 
 void ScaleMapper::computeFinalChanges(NoteSet initialScale, NoteSet transitionScale, NoteSet targetScale,
@@ -125,7 +132,12 @@ NoteSet ScaleMapper::nextTransitionScale(NoteSet notes, NoteSet transitionScale,
 	else if (ts > ss) {
 		next = ss + 1;
 	}
-	NoteSet nextScale = transitionScaleStore[next];
+	// Store is indexed by size - 1; reject impossible sizes
+	if (next < 1 || next > kMaxScaleSize) {
+		return transitionScale;
+	}
+	uint8_t index = next - 1;
+	NoteSet nextScale = transitionScaleStore[index];
 	if (nextScale.isEmpty()) {
 		// No transition mode for this size, let's make one up.
 		nextScale = transitionScale;
@@ -155,7 +167,7 @@ NoteSet ScaleMapper::nextTransitionScale(NoteSet notes, NoteSet transitionScale,
 			// Add highest note of target scale we don't already have.
 			nextScale.add(targetScale.highestNotIn(transitionScale));
 		}
-		transitionScaleStore[next] = nextScale;
+		transitionScaleStore[index] = nextScale;
 	}
 	return nextScale;
 }
