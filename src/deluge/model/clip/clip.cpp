@@ -423,6 +423,13 @@ bool Clip::opportunityToBeginSessionLinearRecording(ModelStackWithTimelineCounte
 					auto* cons = new (consMemory) ConsequenceClipBeginLinearRecord(this);
 					action->addConsequence(cons);
 				}
+				else {
+					if (!action->firstConsequence) {
+						// Discard the empty RECORD action without retaining its freed pointer
+						actionLogger.deleteLastActionIfEmpty();
+						action = nullptr;
+					}
+				}
 			}
 		}
 
