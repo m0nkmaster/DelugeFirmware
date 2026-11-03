@@ -94,6 +94,37 @@ template <std::integral T>
 	return (a + (b - 1)) / b;
 }
 
+/// Checked multiply for unsigned integers. Returns false if the product is not representable in T.
+template <std::unsigned_integral T>
+[[nodiscard]] constexpr bool checked_mul(T a, T b, T& out) {
+	if (a == 0 || b == 0) {
+		out = 0;
+		return true;
+	}
+	if (a > std::numeric_limits<T>::max() / b) {
+		return false;
+	}
+	out = static_cast<T>(a * b);
+	return true;
+}
+
+/// Checked add. Returns false if the sum is not representable in T.
+template <std::integral T>
+[[nodiscard]] constexpr bool checked_add(T a, T b, T& out) {
+	if constexpr (std::is_unsigned_v<T>) {
+		if (b > std::numeric_limits<T>::max() - a) {
+			return false;
+		}
+	}
+	else {
+		if ((b > 0 && a > std::numeric_limits<T>::max() - b) || (b < 0 && a < std::numeric_limits<T>::min() - b)) {
+			return false;
+		}
+	}
+	out = static_cast<T>(a + b);
+	return true;
+}
+
 /// Returns true if `a < b`, when treating `a` and `b` as though they were 31-bit views in to an infinitely large
 /// number, usually a timer. That is, it assumes that if `a < b` but `b - a > (1 << 31)` then then what actually
 /// happened was `a` wrapped and `b` hasn't yet, so `a` actually represents a later point in time.

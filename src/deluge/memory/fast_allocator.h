@@ -1,7 +1,9 @@
 #pragma once
 #include "memory/general_memory_allocator.h"
 #include "util/exceptions.h"
+#include "util/misc.h"
 #include <cstddef>
+#include <limits>
 extern "C" {
 void abort(void); // this is defined in reset_handler.S
 }
@@ -27,7 +29,11 @@ public:
 		if (n == 0) {
 			return nullptr;
 		}
-		void* addr = GeneralMemoryAllocator::get().allocMaxSpeed(n * sizeof(T));
+		std::size_t bytes = 0;
+		if (!util::checked_mul(n, sizeof(T), bytes) || bytes > std::numeric_limits<uint32_t>::max()) {
+			throw deluge::exception::BAD_ALLOC;
+		}
+		void* addr = GeneralMemoryAllocator::get().allocMaxSpeed(static_cast<uint32_t>(bytes));
 		if (addr == nullptr) [[unlikely]] {
 			throw deluge::exception::BAD_ALLOC;
 		}
