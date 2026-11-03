@@ -284,24 +284,35 @@ int32_t sd_DMAC_Open(uint32_t req, int dma_channel)
 ******************************************************************************/
 void sd_DMAC_Close(uint32_t * remain, int dma_channel)
 {
+    uint32_t timeout;
 
     RZA_IO_RegWrite_32(&DMACn(dma_channel).CHCTRL_n,
                         1,
                         DMAC2_CHCTRL_n_CLREN_SHIFT,
                         DMAC2_CHCTRL_n_CLREN);
 
+    timeout = 10000000U;
     while (1 == RZA_IO_RegRead_32(&DMACn(dma_channel).CHSTAT_n,
                                 DMAC2_CHSTAT_n_TACT_SHIFT,
                                 DMAC2_CHSTAT_n_TACT))
     {
         /* Wait stop */
+        if (--timeout == 0U)
+        {
+            break;
+        }
     }
 
+    timeout = 10000000U;
     while (1 == RZA_IO_RegRead_32(&DMACn(dma_channel).CHSTAT_n,
                                 DMAC2_CHSTAT_n_EN_SHIFT,
                                 DMAC2_CHSTAT_n_EN))
     {
         /* Wait stop */
+        if (--timeout == 0U)
+        {
+            break;
+        }
     }
     *remain = DMACn(dma_channel).CRTB_n;
 }
