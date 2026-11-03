@@ -30,7 +30,7 @@ public:
 	uint8_t text[256];
 	uint16_t length;
 	int8_t currentDirection;
-	int8_t currentPos;
+	uint16_t currentPos;
 	int16_t initialDelay;
 
 	int scrollsCount = -1;

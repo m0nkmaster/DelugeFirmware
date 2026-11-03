@@ -61,7 +61,8 @@ bool NumericLayerScrollingText::callBack() {
 
 	currentPos += currentDirection;
 
-	bool reachedEnd = (currentPos == 0 || (currentPos >= length - kNumericDisplayLength && currentDirection == 1));
+	// Compare via addition to avoid unsigned underflow when length < kNumericDisplayLength
+	bool reachedEnd = (currentPos == 0 || (currentDirection == 1 && currentPos + kNumericDisplayLength >= length));
 
 	if (reachedEnd) {
 		currentDirection = -currentDirection;
