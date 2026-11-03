@@ -84,7 +84,11 @@ void HIDSysex::sendDisplayIfChanged() {
 	}
 	// not exact, but if more than half than the serial buffer is still full,
 	// we need to slow down a little. (USB buffer is larger and should be consumed much quicker)
-	if (midiDisplayCable->sendBufferSpace() < 512) {
+	const size_t bufferSpace = midiDisplayCable->sendBufferSpace();
+	// A full OLED frame is 888 bytes; DIN must retain one ring-buffer slot to distinguish full from empty.
+	const bool fullFrameWouldFillDINBuffer = midiDisplayCable == &MIDIDeviceManager::dinMIDIPorts && display->haveOLED()
+	                                         && oledDeltaImage == nullptr && bufferSpace <= 888;
+	if (bufferSpace < 512 || fullFrameWouldFillDINBuffer) {
 		uiTimerManager.setTimer(TimerName::SYSEX_DISPLAY, 100);
 		return;
 	}
@@ -158,6 +162,12 @@ void HIDSysex::send7SegData(MIDICable& cable) {
 void HIDSysex::sendOLEDDataDelta(MIDICable& cable, bool force) {
 	const int32_t data_size = 768;
 	const int32_t max_packed_size = 922;
+
+	// No delta buffer (alloc failed) — send full frame instead of dereferencing null
+	if (oledDeltaImage == nullptr) {
+		sendOLEDData(cable, false);
+		return;
+	}
 
 	uint8_t* current = deluge::hid::display::OLED::oledCurrentImage[0];
 
