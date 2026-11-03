@@ -177,13 +177,17 @@ UI* getUIUpOneLevel(int32_t numLevelsUp) {
 	}
 }
 
-// If UI not found, chaos
 void closeUI(UI* uiToClose) {
+	// Root UI (index 0) and absent UIs must not be closed — that used to index at -1.
+	if (uiToClose == nullptr || numUIsOpen <= 1) {
+		return;
+	}
 
 	bool redrawMainPads = false;
 	bool redrawSidebar = false;
 
 	int32_t u;
+	bool found = false;
 	for (u = numUIsOpen - 1; u >= 1; u--) {
 
 		UI* thisUI = uiNavigationHierarchy[u];
@@ -191,8 +195,13 @@ void closeUI(UI* uiToClose) {
 		redrawSidebar |= thisUI->renderSidebar();
 
 		if (thisUI == uiToClose) {
+			found = true;
 			break;
 		}
+	}
+
+	if (!found) {
+		return;
 	}
 
 	UI* newUI = uiNavigationHierarchy[u - 1];
@@ -231,7 +240,13 @@ void closeUI(UI* uiToClose) {
 }
 
 bool openUI(UI* newUI) {
+	if (newUI == nullptr || numUIsOpen >= static_cast<int32_t>(kUiNavigationHistoryLength)) {
+		return false;
+	}
 	newUI = newUI->getUI();
+	if (newUI == nullptr) {
+		return false;
+	}
 	UI* oldUI = getCurrentUI();
 	uiNavigationHierarchy[numUIsOpen] = newUI;
 	numUIsOpen++;
