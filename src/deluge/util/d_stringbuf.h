@@ -18,7 +18,7 @@ class StringBuf {
 public:
 	StringBuf(char* buf, size_t capacity) : capacity_(capacity), buf_(buf) { memset(buf_, '\0', capacity_); }
 	void append(std::string_view str);
-	void append(char c) { ::strncat(buf_, &c, 1); }
+	void append(char c);
 	void removeSpaces() {
 		size_t removed = 0;
 		// upto size, not below it -- we want the null as well
@@ -38,11 +38,54 @@ public:
 		}
 	}
 
-	// TODO: Validate buffer size. These can overflow
-	void appendInt(int i, int minChars = 1) { intToString(i, buf_ + size(), minChars); }
-	void appendHex(int i, int minChars = 1) { intToHex(i, buf_ + size(), minChars); }
+	void appendInt(int i, int minChars = 1) {
+		if (spaceRemaining() == 0) {
+			return;
+		}
+		char tmp[16];
+		if (minChars < 1) {
+			minChars = 1;
+		}
+		// Leave room for a leading '-' plus the terminator
+		if (minChars > static_cast<int>(sizeof(tmp) - 2)) {
+			minChars = static_cast<int>(sizeof(tmp) - 2);
+		}
+		intToString(i, tmp, minChars);
+		append(tmp);
+	}
+	void appendHex(int i, int minChars = 1) {
+		if (spaceRemaining() == 0) {
+			return;
+		}
+		char tmp[16];
+		if (minChars < 1) {
+			minChars = 1;
+		}
+		if (minChars > static_cast<int>(sizeof(tmp) - 1)) {
+			minChars = static_cast<int>(sizeof(tmp) - 1);
+		}
+		intToHex(static_cast<uint32_t>(i), tmp, minChars);
+		append(tmp);
+	}
 	void appendFloat(float f, int32_t minDecimals, int32_t maxDecimals) {
-		floatToString(f, buf_ + size(), minDecimals, maxDecimals);
+		if (spaceRemaining() == 0) {
+			return;
+		}
+		char tmp[64];
+		if (maxDecimals < 0) {
+			maxDecimals = 0;
+		}
+		if (maxDecimals > 40) {
+			maxDecimals = 40;
+		}
+		if (minDecimals < 0) {
+			minDecimals = 0;
+		}
+		if (minDecimals > maxDecimals) {
+			minDecimals = maxDecimals;
+		}
+		floatToString(f, tmp, minDecimals, maxDecimals);
+		append(tmp);
 	}
 
 	[[nodiscard]] char* data() { return buf_; }
@@ -61,6 +104,11 @@ public:
 	operator std::string_view() const { return std::string_view{buf_}; }
 
 private:
+	[[nodiscard]] size_t spaceRemaining() const {
+		size_t s = size();
+		return (s + 1 < capacity_) ? (capacity_ - s - 1) : 0;
+	}
+
 	size_t capacity_;
 	char* buf_;
 };

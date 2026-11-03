@@ -3722,8 +3722,9 @@ void SessionView::copyClipName(Clip* source, Clip* target, Output* targetOutput)
 		return;
 	}
 	// Start from the original clip name. We have max 12 sections, so being able to append
-	// a two digit number is enough.
-	DEF_STACK_STRING_BUF(newName, source->name.getLength() + 2);
+	// a two digit number is enough. Capacity is name + two digits + NUL (StringBuf reserves
+	// one byte for the terminator via spaceRemaining).
+	DEF_STACK_STRING_BUF(newName, source->name.getLength() + 3);
 	newName.append(source->name.get());
 	// If the name already exists on the target output, we'll append a number. We start from 2,
 	// because "BRIDGE" & "BRIDGE2" make more sense than "BRIDGE" & "BRIDGE1".
