@@ -174,6 +174,11 @@ int32_t WaveformRenderer::getColBrightnessForSingleRow(int32_t xDisplay, int32_t
 		D_PRINTLN("peak:  %d  but max:  %d", peakHere, maxPeakFromZero);
 	}
 
+	// Silent / zero-amplitude waveform: avoid divide-by-zero
+	if (maxPeakFromZero == 0) {
+		return 0;
+	}
+
 	uint32_t peak16 = ((int64_t)peakHere << 16) / maxPeakFromZero;
 
 	return std::min<int32_t>(peak16 >> 8, 256); // Max 256 - for now. Looks great and bright.
@@ -683,6 +688,13 @@ void WaveformRenderer::releaseAllLoads() {
 
 void WaveformRenderer::getColBarPositions(int32_t xDisplay, WaveformRenderData* data, int32_t* min24, int32_t* max24,
                                           int32_t valueCentrePoint, int32_t valueSpan) {
+	// Silent / zero-amplitude waveform: draw a centered 1-pixel line instead of dividing by zero
+	if (valueSpan == 0) {
+		*min24 = -8388608;
+		*max24 = 8388608;
+		return;
+	}
+
 	*min24 = ((int64_t)(data->minPerCol[xDisplay] - valueCentrePoint) << 24) / valueSpan;
 	*max24 = ((int64_t)(data->maxPerCol[xDisplay] - valueCentrePoint) << 24) / valueSpan;
 
