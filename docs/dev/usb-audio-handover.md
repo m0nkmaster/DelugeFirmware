@@ -18,10 +18,14 @@ Target: **m0nkmaster/DelugeFirmware:main**, not Synthstrom's repository or the f
 The user explicitly requested work and a PR in their personal fork. Upstream contribution instructions prohibit agents
 opening upstream PRs; there is no authorization to submit this to upstream.
 
-The branch was rebased onto upstream `main` at `00c0b3b7609e5ffa1f33493d99b646637d853845` on 2026-11-01.
-The seven feature commits replayed without conflicts or patch changes. The subsequent commit `19640530c` moves OLED
-status text up six pixels. Check `git status`, `git log`, and the PR base before continuing; local commits may not
-have been pushed.
+The branch now includes remote `feat/usb-audio-host`, fork `main` at `a44457d9a`, and upstream `main` at
+`4cdf49002`, integrated with merge commits (no history rewrite). The remote feature history predates the local
+rebase; merge conflicts were resolved by preserving the newer local documentation and OLED status position.
+Validation at integration commit `8f1bbdab1`: `./dbt test` passed all 11 CTest targets; Debug and Release builds
+both succeeded. Compiler/linker warnings remain; these were not warning-free builds. No new hardware testing
+was performed. Release binary SHA-256: `4565dcc67e11fbfe78e3621c2dcf75bf325f81e8410ccedefd0f1a54b2557dc0`.
+Fork `main` remains behind upstream, so PR #3 also shows upstream changes until its base is synced.
+Check `git status`, `git log`, and the PR base before continuing; local commits may not have been pushed.
 Historical commit IDs below refer to earlier branch revisions and may no longer be ancestors of the current head.
 Do not assume unrelated local branches are included.
 
