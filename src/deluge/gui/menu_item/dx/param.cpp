@@ -89,7 +89,7 @@ static int upper_limit_global_param[kNumGlobalParams] = {
     1,                              // 136: sync
     99, 99, 99, 99,                 // 137-140: LFO speed, delay, pmd, amd
     1,                              // 141: lfo sync,
-    4,                              // 142: lfo waveform,
+    5,                              // 142: lfo waveform,
     7,                              // lfo mod sense pitch
 };
 
